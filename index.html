@@ -445,6 +445,104 @@
             color: var(--danger);
         }
 
+        /* List action buttons row */
+        .list-actions {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .list-action-btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 11px 8px;
+            min-height: 44px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            background: white;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            transition: all 0.15s;
+        }
+
+        .list-action-btn:active {
+            transform: scale(0.96);
+        }
+
+        .list-action-btn.fridge {
+            border-color: #a5d8ff;
+            background: #e7f5ff;
+            color: #1971c2;
+        }
+
+        .list-action-btn.copy {
+            border-color: #b2f2bb;
+            background: #ebfbee;
+            color: #2b8a3e;
+        }
+
+        .list-action-btn.share {
+            border-color: #d0bfff;
+            background: #f3f0ff;
+            color: #6741d9;
+        }
+
+        .list-action-btn .btn-icon {
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        /* Fridge scan modal (reuses scan-modal styles) */
+        .fridge-result-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .fridge-result-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: #f8f9fb;
+            border-radius: 10px;
+            margin-bottom: 6px;
+            min-height: 44px;
+        }
+
+        .fridge-result-item .fridge-cb {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            flex-shrink: 0;
+            accent-color: var(--lidl-blue);
+        }
+
+        .fridge-result-item label {
+            flex: 1;
+            font-size: 15px;
+            color: var(--text);
+            cursor: pointer;
+        }
+
+        .fridge-summary {
+            background: var(--pastel-blue);
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 14px;
+            font-size: 14px;
+            color: var(--text);
+            line-height: 1.6;
+        }
+
         /* Recipes */
         .recipe-card {
             background: white;
@@ -1319,6 +1417,18 @@
             <div class="autocomplete-dropdown" id="autocompleteDropdown"></div>
         </div>
 
+        <div class="list-actions">
+            <button class="list-action-btn fridge" onclick="openFridgeModal()">
+                <span class="btn-icon">&#x1F9CA;</span> Koelkast scan
+            </button>
+            <button class="list-action-btn copy" onclick="copyListToClipboard()">
+                <span class="btn-icon">&#x1F4CB;</span> Kopieer
+            </button>
+            <button class="list-action-btn share" onclick="shareList()">
+                <span class="btn-icon">&#x1F4E4;</span> Deel
+            </button>
+        </div>
+
         <div id="shoppingList"></div>
 
         <div class="empty-state" id="emptyState">
@@ -1452,6 +1562,59 @@
                 Gratis key aanmaken bij Google AI Studio &#x2192;
             </a>
             <div class="gemini-key-status" id="geminiKeyStatus" style="display:none;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Fridge Scan Modal -->
+<div class="scan-modal-overlay" id="fridgeModalOverlay" onclick="if(event.target===this)closeFridgeModal()">
+    <div class="scan-modal">
+        <div class="scan-modal-header">
+            <h3>&#x1F9CA; Koelkast scannen</h3>
+            <button class="scan-close-btn" onclick="closeFridgeModal()">&#x2715;</button>
+        </div>
+
+        <p style="font-size:14px; color:var(--text-light); margin-bottom:14px; line-height:1.5;">
+            Maak een foto van je koelkast, voorraadkast of vriezer. De AI analyseert wat je hebt en stelt voor wat je moet bijkopen.
+        </p>
+
+        <!-- Upload area -->
+        <div class="scan-upload-area" id="fridgeUploadArea" onclick="document.getElementById('fridgeFileInput').click()">
+            <div class="scan-upload-icon" id="fridgeUploadIcon">&#x1F4F7;</div>
+            <div class="scan-upload-text" id="fridgeUploadText">Tik om een foto te kiezen</div>
+            <div class="scan-upload-hint">Koelkast, voorraadkast of vriezer</div>
+            <img class="scan-preview" id="fridgePreview" alt="Preview">
+        </div>
+        <input type="file" id="fridgeFileInput" accept="image/*" capture="environment"
+               style="display:none" onchange="onFridgePhotoSelected(event)">
+
+        <!-- Error message -->
+        <div class="scan-error" id="fridgeError"></div>
+
+        <!-- Spinner -->
+        <div class="scan-spinner" id="fridgeSpinner">
+            <div class="spinner-icon"></div>
+            <div class="spinner-text">Koelkast analyseren met AI...</div>
+        </div>
+
+        <!-- Action buttons (before scan) -->
+        <div id="fridgeActions">
+            <button class="scan-action-btn primary" id="fridgeScanBtn" onclick="scanFridge()" disabled>
+                &#x1F50D; Analyseer wat ik moet kopen
+            </button>
+        </div>
+
+        <!-- Result (after scan) -->
+        <div class="scan-result" id="fridgeResult">
+            <div class="fridge-summary" id="fridgeSummary"></div>
+            <p style="font-size:13px; color:var(--text-light); margin-bottom:10px; font-weight:600;">Selecteer wat je wilt toevoegen:</p>
+            <ul class="fridge-result-list" id="fridgeResultList"></ul>
+            <button class="scan-action-btn primary" onclick="addFridgeItems()" style="margin-top:14px;">
+                &#x1F6D2; Voeg geselecteerde toe aan lijst
+            </button>
+            <button class="scan-action-btn secondary" onclick="resetFridge()">
+                &#x1F504; Opnieuw scannen
+            </button>
         </div>
     </div>
 </div>
@@ -2427,6 +2590,267 @@ function copySyncCode() {
     }).catch(() => {
         showToast('Code: ' + householdCode);
     });
+}
+
+// ============ COPY & SHARE LIST ============
+function getListAsText() {
+    const unchecked = shoppingList.filter(i => !i.checked);
+    if (unchecked.length === 0) return '';
+
+    // Group by category
+    const grouped = {};
+    unchecked.forEach(item => {
+        const cat = item.category || 'Overig';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(item);
+    });
+
+    const catOrder = Object.keys(LIDL_CATEGORIES);
+    const sortedCats = Object.keys(grouped).sort((a, b) => catOrder.indexOf(a) - catOrder.indexOf(b));
+
+    let text = '\u{1F6D2} Boodschappenlijst\n';
+    text += '━━━━━━━━━━━━━━━━━━\n';
+
+    sortedCats.forEach(cat => {
+        const emoji = LIDL_CATEGORIES[cat] || '\u{1F4E6}';
+        text += '\n' + emoji + ' ' + cat + '\n';
+        grouped[cat].forEach(item => {
+            const qty = item.quantity > 1 ? item.quantity + 'x ' : '';
+            text += '  \u25CB ' + qty + item.name + '\n';
+        });
+    });
+
+    text += '\n' + unchecked.length + ' artikel' + (unchecked.length === 1 ? '' : 'en');
+    return text;
+}
+
+function copyListToClipboard() {
+    const unchecked = shoppingList.filter(i => !i.checked);
+    if (unchecked.length === 0) {
+        showToast('Je lijst is leeg');
+        return;
+    }
+
+    const text = getListAsText();
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('\u{2705} Lijst gekopieerd! Plak in AH/Picnic app');
+    }).catch(() => {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('\u{2705} Lijst gekopieerd!');
+    });
+}
+
+function shareList() {
+    const unchecked = shoppingList.filter(i => !i.checked);
+    if (unchecked.length === 0) {
+        showToast('Je lijst is leeg');
+        return;
+    }
+
+    const text = getListAsText();
+
+    if (navigator.share) {
+        navigator.share({
+            title: 'Boodschappenlijst',
+            text: text
+        }).catch(() => {});
+    } else {
+        // Fallback: copy to clipboard
+        copyListToClipboard();
+    }
+}
+
+// ============ FRIDGE SCAN ============
+let fridgeImageBase64 = null;
+let fridgeImageType = null;
+
+function openFridgeModal() {
+    const key = localStorage.getItem('lidl_gemini_key');
+    if (!key) {
+        showToast('Stel eerst een Gemini API key in via Sync tab');
+        return;
+    }
+    document.getElementById('fridgeModalOverlay').classList.add('active');
+    resetFridge();
+}
+
+function closeFridgeModal() {
+    document.getElementById('fridgeModalOverlay').classList.remove('active');
+    resetFridge();
+}
+
+function resetFridge() {
+    fridgeImageBase64 = null;
+    fridgeImageType = null;
+    const preview = document.getElementById('fridgePreview');
+    const uploadArea = document.getElementById('fridgeUploadArea');
+
+    preview.classList.remove('visible');
+    preview.src = '';
+    uploadArea.classList.remove('has-image');
+    document.getElementById('fridgeUploadIcon').style.display = '';
+    document.getElementById('fridgeUploadText').style.display = '';
+    uploadArea.querySelector('.scan-upload-hint').style.display = '';
+
+    document.getElementById('fridgeScanBtn').disabled = true;
+    document.getElementById('fridgeActions').style.display = '';
+    document.getElementById('fridgeSpinner').classList.remove('active');
+    document.getElementById('fridgeResult').classList.remove('active');
+    document.getElementById('fridgeError').classList.remove('active');
+    document.getElementById('fridgeFileInput').value = '';
+}
+
+function onFridgePhotoSelected(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+        showToast('Selecteer een afbeelding');
+        return;
+    }
+
+    compressImage(file, 1024, 0.7).then(result => {
+        fridgeImageBase64 = result.base64;
+        fridgeImageType = result.mimeType;
+
+        const preview = document.getElementById('fridgePreview');
+        const uploadArea = document.getElementById('fridgeUploadArea');
+        preview.src = result.dataUrl;
+        preview.classList.add('visible');
+        uploadArea.classList.add('has-image');
+
+        document.getElementById('fridgeUploadIcon').style.display = 'none';
+        document.getElementById('fridgeUploadText').style.display = 'none';
+        uploadArea.querySelector('.scan-upload-hint').style.display = 'none';
+
+        document.getElementById('fridgeScanBtn').disabled = false;
+    });
+}
+
+async function scanFridge() {
+    const key = localStorage.getItem('lidl_gemini_key');
+    if (!key || !fridgeImageBase64) return;
+
+    document.getElementById('fridgeActions').style.display = 'none';
+    document.getElementById('fridgeSpinner').classList.add('active');
+    document.getElementById('fridgeError').classList.remove('active');
+
+    // Build context: what's already on the list
+    const existingItems = shoppingList.filter(i => !i.checked).map(i => i.name);
+    const existingContext = existingItems.length > 0
+        ? '\n\nDeze producten staan AL op de boodschappenlijst (niet opnieuw voorstellen): ' + existingItems.join(', ')
+        : '';
+
+    const prompt = `Je bent een slimme keukenassistent. Analyseer deze foto van een koelkast, voorraadkast of vriezer.
+
+Kijk goed naar:
+1. Wat er aanwezig is en bijna op lijkt (weinig over)
+2. Wat er helemaal mist (veelvoorkomende basisproducten die er niet staan)
+3. Producten die over de datum zouden kunnen zijn
+
+Geef het resultaat als JSON:
+{
+  "summary": "Korte samenvatting van wat je ziet (1-2 zinnen, Nederlands)",
+  "items": [
+    {"name": "productnaam", "reason": "korte reden"},
+    {"name": "productnaam", "reason": "korte reden"}
+  ]
+}
+
+Regels:
+- Gebruik Nederlandse productnamen die bij de Lidl verkrijgbaar zijn
+- Geef 5-15 producten die aangevuld moeten worden
+- Gebruik korte, praktische redenen (bijv. "bijna op", "niet gezien", "basisproduct ontbreekt")
+- Focus op verse producten, zuivel, groente/fruit, en basisvoeding
+- Geef ALLEEN het JSON object terug, geen andere tekst of markdown${existingContext}`;
+
+    const models = ['gemini-2.5-flash', 'gemini-2.0-flash-lite'];
+    let lastError = null;
+
+    for (const model of models) {
+        try {
+            document.getElementById('fridgeSpinner').querySelector('.spinner-text').textContent =
+                model === models[0] ? 'Koelkast analyseren met AI...' : 'Opnieuw proberen met ander model...';
+
+            const data = await callGeminiAPI(key, model, prompt, fridgeImageBase64, fridgeImageType);
+
+            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) throw new Error('Geen antwoord ontvangen');
+
+            let jsonStr = text.trim();
+            if (jsonStr.startsWith('```')) {
+                jsonStr = jsonStr.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+            }
+
+            const result = JSON.parse(jsonStr);
+            if (result.error) throw new Error(result.error);
+            if (!result.items || !Array.isArray(result.items)) throw new Error('Onvolledig antwoord');
+
+            // Show summary
+            document.getElementById('fridgeSummary').textContent = result.summary || 'Analyse compleet.';
+
+            // Build checklist
+            const listEl = document.getElementById('fridgeResultList');
+            listEl.innerHTML = result.items.map((item, i) => `
+                <li class="fridge-result-item">
+                    <input type="checkbox" class="fridge-cb" id="fridge-item-${i}" checked
+                           data-name="${item.name.replace(/"/g, '&quot;')}">
+                    <label for="fridge-item-${i}">
+                        <strong>${item.name}</strong>
+                        <span style="color:var(--text-light); font-size:12px;"> \u2014 ${item.reason}</span>
+                    </label>
+                </li>
+            `).join('');
+
+            document.getElementById('fridgeSpinner').classList.remove('active');
+            document.getElementById('fridgeResult').classList.add('active');
+            return;
+
+        } catch (e) {
+            console.warn('Fridge scan ' + model + ' failed:', e.message);
+            lastError = e;
+            if (e.status && e.status !== 429 && e.status !== 503 && e.status !== 500) break;
+            if (model !== models[models.length - 1]) {
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
+    }
+
+    // All failed
+    document.getElementById('fridgeSpinner').classList.remove('active');
+    document.getElementById('fridgeActions').style.display = '';
+
+    const errorEl = document.getElementById('fridgeError');
+    let errorMsg = 'Fout bij analyseren: ' + lastError.message;
+    if (lastError.message && lastError.message.includes('API key not valid')) {
+        errorMsg = 'API key niet geldig. Controleer je Gemini key in de Sync tab.';
+    } else if (lastError.status === 429) {
+        errorMsg = 'API limiet bereikt. Wacht een minuut en probeer opnieuw.';
+    }
+    errorEl.textContent = errorMsg;
+    errorEl.classList.add('active');
+}
+
+function addFridgeItems() {
+    const checkboxes = document.querySelectorAll('.fridge-cb:checked');
+    let count = 0;
+    checkboxes.forEach(cb => {
+        const name = cb.dataset.name;
+        if (name) {
+            addItem(name);
+            count++;
+        }
+    });
+    closeFridgeModal();
+    if (count > 0) {
+        showToast('\u{1F6D2} ' + count + ' product' + (count === 1 ? '' : 'en') + ' toegevoegd!');
+    }
 }
 
 // ============ EMOJI PICKER ============
