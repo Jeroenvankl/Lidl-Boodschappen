@@ -1,0 +1,3211 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Lidl Lijst">
+    <meta name="theme-color" content="#0050aa">
+    <title>Lidl Boodschappenlijst</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        :root {
+            --lidl-blue: #0050aa;
+            --lidl-yellow: #fff000;
+            --lidl-red: #e60a14;
+            --bg: linear-gradient(135deg, #e8f4fd 0%, #f0e6ff 50%, #fce4ec 100%);
+            --bg-solid: #eef0fb;
+            --card: #ffffff;
+            --text: #1a1a2e;
+            --text-light: #5a6278;
+            --border: #d8dce8;
+            --success: #10b981;
+            --danger: #ef4444;
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --pastel-blue: #dbeafe;
+            --pastel-purple: #ede9fe;
+            --pastel-pink: #fce7f3;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            background-attachment: fixed;
+            color: var(--text);
+            min-height: 100vh;
+            min-height: 100dvh;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            -webkit-text-size-adjust: 100%;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #0050aa 0%, #1a6dd1 100%);
+            color: white;
+            padding: calc(12px + var(--safe-top)) 16px 12px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 12px rgba(0,80,170,0.25);
+        }
+
+        .header-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: var(--lidl-yellow);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 14px;
+            color: var(--lidl-blue);
+        }
+
+        .logo h1 {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sync-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #6b7280;
+            transition: background 0.3s;
+        }
+
+        .sync-indicator.connected { background: #10b981; }
+        .sync-indicator.syncing { background: #fbbf24; animation: pulse 1s infinite; }
+        .sync-indicator.error { background: #ef4444; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .header-badge {
+            background: var(--lidl-yellow);
+            color: var(--lidl-blue);
+            font-weight: 700;
+            font-size: 13px;
+            padding: 4px 10px;
+            border-radius: 12px;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            background: white;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 60px;
+            z-index: 99;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 14px 8px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-light);
+            border: none;
+            background: none;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.2s;
+        }
+
+        .tab.active {
+            color: var(--lidl-blue);
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 16px;
+            right: 16px;
+            height: 3px;
+            background: var(--lidl-blue);
+            border-radius: 3px 3px 0 0;
+        }
+
+        .tab-icon {
+            display: block;
+            font-size: 20px;
+            margin-bottom: 2px;
+        }
+
+        /* Main Content */
+        .content {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 16px;
+            padding-bottom: calc(100px + var(--safe-bottom));
+        }
+
+        .page { display: none; }
+        .page.active { display: block; }
+
+        /* Shopping List */
+        .add-item-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            position: relative;
+        }
+
+        .add-item-bar input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s;
+            background: white;
+            color: var(--text);
+        }
+
+        .add-item-bar input:focus {
+            border-color: var(--lidl-blue);
+        }
+
+        .add-item-bar input::placeholder {
+            color: #9ca3af;
+        }
+
+        .add-item-bar button {
+            padding: 12px 18px;
+            background: var(--lidl-blue);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        /* Autocomplete dropdown */
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 60px;
+            background: white;
+            border: 2px solid var(--lidl-blue);
+            border-top: none;
+            border-radius: 0 0 12px 12px;
+            max-height: 240px;
+            overflow-y: auto;
+            z-index: 50;
+            display: none;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+
+        .autocomplete-dropdown.show { display: block; }
+
+        .autocomplete-item {
+            padding: 12px 16px;
+            min-height: 44px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background 0.1s;
+        }
+
+        .autocomplete-item:last-child { border-bottom: none; }
+        .autocomplete-item:hover,
+        .autocomplete-item.selected {
+            background: var(--pastel-blue);
+        }
+
+        .ac-cat-badge {
+            font-size: 11px;
+            background: #f3f4f6;
+            color: var(--text-light);
+            padding: 2px 8px;
+            border-radius: 6px;
+            white-space: nowrap;
+        }
+
+        .ac-name {
+            flex: 1;
+            font-size: 15px;
+            color: var(--text);
+        }
+
+        .ac-name strong {
+            color: var(--lidl-blue);
+        }
+
+        .ac-manual {
+            font-style: italic;
+            color: var(--text-light);
+            font-size: 13px;
+        }
+
+        .list-section {
+            margin-bottom: 20px;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 4px;
+            margin-bottom: 8px;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-light);
+        }
+
+        .section-count {
+            font-size: 12px;
+            color: var(--text-light);
+            background: rgba(255,255,255,0.7);
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+
+        .list-item {
+            display: flex;
+            align-items: center;
+            background: white;
+            padding: 14px 16px;
+            min-height: 56px;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            transition: all 0.2s;
+            gap: 12px;
+        }
+
+        .list-item:active {
+            transform: scale(0.98);
+            background: #f8f9fb;
+        }
+
+        .list-item.checked {
+            opacity: 0.5;
+            background: rgba(255,255,255,0.6);
+        }
+
+        .list-item.checked .item-name {
+            text-decoration: line-through;
+            color: var(--text-light);
+        }
+
+        .checkbox {
+            width: 30px;
+            height: 30px;
+            border: 2px solid var(--border);
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.2s;
+            background: white;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .checkbox:active {
+            transform: scale(0.85);
+        }
+
+        .checkbox.checked {
+            background: var(--success);
+            border-color: var(--success);
+        }
+
+        .checkbox.checked::after {
+            content: '\2713';
+            color: white;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .item-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .item-name {
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .item-category {
+            font-size: 12px;
+            color: var(--text-light);
+            margin-top: 2px;
+        }
+
+        .item-delete {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            border: none;
+            background: none;
+            color: #b0b7c3;
+            font-size: 18px;
+            cursor: pointer;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .item-delete:hover,
+        .item-delete:active {
+            background: #fee2e2;
+            color: var(--danger);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--text-light);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .empty-state p {
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .clear-checked-btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background: rgba(255,255,255,0.5);
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            color: var(--text-light);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+
+        .clear-checked-btn:hover {
+            border-color: var(--danger);
+            color: var(--danger);
+        }
+
+        /* List action buttons row */
+        .list-actions {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .list-action-btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 11px 8px;
+            min-height: 44px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            background: white;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            transition: all 0.15s;
+        }
+
+        .list-action-btn:active {
+            transform: scale(0.96);
+        }
+
+        .list-action-btn.fridge {
+            border-color: #a5d8ff;
+            background: #e7f5ff;
+            color: #1971c2;
+        }
+
+        .list-action-btn.copy {
+            border-color: #b2f2bb;
+            background: #ebfbee;
+            color: #2b8a3e;
+        }
+
+        .list-action-btn.share {
+            border-color: #d0bfff;
+            background: #f3f0ff;
+            color: #6741d9;
+        }
+
+        .list-action-btn .btn-icon {
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        /* Fridge scan modal (reuses scan-modal styles) */
+        .fridge-result-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .fridge-result-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: #f8f9fb;
+            border-radius: 10px;
+            margin-bottom: 6px;
+            min-height: 44px;
+        }
+
+        .fridge-result-item .fridge-cb {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            flex-shrink: 0;
+            accent-color: var(--lidl-blue);
+        }
+
+        .fridge-result-item label {
+            flex: 1;
+            font-size: 15px;
+            color: var(--text);
+            cursor: pointer;
+        }
+
+        .fridge-summary {
+            background: var(--pastel-blue);
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 14px;
+            font-size: 14px;
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        /* Recipes */
+        .recipe-card {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            cursor: pointer;
+            transition: transform 0.15s;
+        }
+
+        .recipe-card:active {
+            transform: scale(0.98);
+        }
+
+        .recipe-header {
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .recipe-emoji {
+            font-size: 36px;
+            width: 52px;
+            height: 52px;
+            background: var(--pastel-purple);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .recipe-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .recipe-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 2px;
+        }
+
+        .recipe-meta {
+            font-size: 13px;
+            color: var(--text-light);
+        }
+
+        .recipe-add-btn {
+            background: var(--lidl-blue);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            min-height: 44px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            flex-shrink: 0;
+            white-space: nowrap;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .recipe-add-btn:active {
+            transform: scale(0.95);
+        }
+
+        .recipe-add-btn.added {
+            background: var(--success);
+        }
+
+        .recipe-details {
+            display: none;
+            padding: 0 16px 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .recipe-details.open {
+            display: block;
+        }
+
+        .recipe-details h4 {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-light);
+            letter-spacing: 0.5px;
+            margin: 12px 0 8px;
+        }
+
+        .ingredient-list {
+            list-style: none;
+        }
+
+        .ingredient-list li {
+            padding: 6px 0;
+            font-size: 14px;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ingredient-list li::before {
+            content: '\2022';
+            color: var(--lidl-blue);
+            font-weight: 700;
+        }
+
+        .recipe-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .recipe-action-btn {
+            flex: 1;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            color: var(--text);
+        }
+
+        .recipe-action-btn.primary {
+            background: var(--lidl-blue);
+            color: white;
+        }
+
+        .recipe-action-btn.secondary {
+            background: var(--pastel-blue);
+            color: var(--text);
+        }
+
+        .recipe-action-btn.danger {
+            background: #fee2e2;
+            color: var(--danger);
+        }
+
+        /* Add Recipe Form */
+        .add-recipe-section {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+
+        .add-recipe-section h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 14px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-light);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            font-family: inherit;
+            transition: border-color 0.2s;
+            background: white;
+            color: var(--text);
+        }
+
+        .form-group input::placeholder,
+        .form-group textarea::placeholder {
+            color: #9ca3af;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            border-color: var(--lidl-blue);
+        }
+
+        .form-group textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: var(--text-light);
+            margin-top: 4px;
+        }
+
+        .form-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .form-buttons button {
+            flex: 1;
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn-save {
+            background: var(--lidl-blue);
+            color: white;
+        }
+
+        .btn-cancel {
+            background: var(--pastel-blue);
+            color: var(--text);
+        }
+
+        .toggle-form-btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            background: white;
+            border: 2px dashed var(--lidl-blue);
+            border-radius: 16px;
+            color: var(--lidl-blue);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 16px;
+        }
+
+        /* Category filter */
+        .category-filter {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 12px;
+            margin-bottom: 4px;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .category-filter::-webkit-scrollbar { display: none; }
+
+        .filter-chip {
+            padding: 8px 14px;
+            background: white;
+            border: 1.5px solid var(--border);
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text);
+        }
+
+        .filter-chip.active {
+            background: var(--lidl-blue);
+            color: white;
+            border-color: var(--lidl-blue);
+        }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: calc(80px + var(--safe-bottom));
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--text);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 200;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            white-space: nowrap;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* Quantity controls — FIXED */
+        .quantity-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .qty-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid var(--lidl-blue);
+            background: var(--pastel-blue);
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--lidl-blue);
+            padding: 0;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .qty-btn:active {
+            background: var(--lidl-blue);
+            color: white;
+        }
+
+        .qty-value {
+            font-size: 15px;
+            font-weight: 700;
+            min-width: 22px;
+            text-align: center;
+            color: var(--text);
+        }
+
+        /* Lidl categories bar */
+        .lidl-aisle-info {
+            font-size: 11px;
+            color: var(--lidl-blue);
+            font-weight: 600;
+            background: var(--pastel-blue);
+            padding: 2px 8px;
+            border-radius: 6px;
+            display: inline-block;
+            margin-top: 2px;
+        }
+
+        /* Sync page */
+        .sync-card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+
+        .sync-card h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+
+        .sync-card p {
+            font-size: 14px;
+            color: var(--text-light);
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        .sync-code-display {
+            background: var(--pastel-purple);
+            padding: 16px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        .sync-code-display .code {
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: 6px;
+            color: var(--lidl-blue);
+            font-family: 'SF Mono', monospace;
+        }
+
+        .sync-code-display .label {
+            font-size: 12px;
+            color: var(--text-light);
+            margin-top: 4px;
+        }
+
+        .sync-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: #f0fdf4;
+            border-radius: 10px;
+            margin-bottom: 12px;
+            font-size: 14px;
+            color: #166534;
+        }
+
+        .sync-status.offline {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .sync-status.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .sync-btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 8px;
+        }
+
+        .sync-btn.primary {
+            background: var(--lidl-blue);
+            color: white;
+        }
+
+        .sync-btn.secondary {
+            background: var(--pastel-blue);
+            color: var(--lidl-blue);
+        }
+
+        .sync-btn.danger {
+            background: #fee2e2;
+            color: var(--danger);
+        }
+
+        .sync-input-group {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .sync-input-group input {
+            flex: 1;
+            padding: 12px 14px;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            text-align: center;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            outline: none;
+            background: white;
+            color: var(--text);
+            font-family: 'SF Mono', monospace;
+        }
+
+        .sync-input-group input:focus {
+            border-color: var(--lidl-blue);
+        }
+
+        .sync-input-group input::placeholder {
+            color: #9ca3af;
+            letter-spacing: 2px;
+            font-size: 14px;
+        }
+
+        .sync-input-group button {
+            padding: 12px 20px;
+            background: var(--lidl-blue);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .firebase-config-note {
+            background: var(--pastel-blue);
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 13px;
+            color: var(--text-light);
+            line-height: 1.5;
+            margin-top: 12px;
+        }
+
+        .firebase-config-note code {
+            background: rgba(0,0,0,0.06);
+            padding: 1px 4px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        /* Emoji suggestions */
+        .emoji-suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .emoji-option {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            background: var(--pastel-blue);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.15s, background 0.15s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .emoji-option:active {
+            transform: scale(0.9);
+        }
+
+        .emoji-option.selected {
+            background: var(--lidl-blue);
+            box-shadow: 0 2px 8px rgba(0,80,170,0.3);
+            transform: scale(1.1);
+        }
+
+        /* Scan Recipe Modal */
+        .scan-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.55);
+            z-index: 300;
+            justify-content: center;
+            align-items: flex-end;
+            padding: 0;
+        }
+
+        .scan-modal-overlay.active {
+            display: flex;
+        }
+
+        .scan-modal {
+            background: white;
+            border-radius: 20px 20px 0 0;
+            width: 100%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 24px 20px calc(20px + var(--safe-bottom));
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        .scan-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .scan-modal-header h3 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .scan-close-btn {
+            background: #f3f4f6;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            font-size: 18px;
+            cursor: pointer;
+            color: var(--text-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .scan-upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 16px;
+            padding: 32px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            margin-bottom: 16px;
+            position: relative;
+        }
+
+        .scan-upload-area:hover,
+        .scan-upload-area.dragover {
+            border-color: var(--lidl-blue);
+            background: var(--pastel-blue);
+        }
+
+        .scan-upload-area.has-image {
+            border-style: solid;
+            border-color: var(--success);
+            padding: 8px;
+        }
+
+        .scan-upload-icon {
+            font-size: 48px;
+            margin-bottom: 8px;
+        }
+
+        .scan-upload-text {
+            font-size: 15px;
+            color: var(--text-light);
+            font-weight: 500;
+        }
+
+        .scan-upload-hint {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 4px;
+        }
+
+        .scan-preview {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 12px;
+            display: none;
+            margin: 0 auto;
+            object-fit: contain;
+        }
+
+        .scan-preview.visible {
+            display: block;
+        }
+
+        .scan-action-btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 8px;
+            transition: opacity 0.2s;
+        }
+
+        .scan-action-btn.primary {
+            background: var(--lidl-blue);
+            color: white;
+        }
+
+        .scan-action-btn.primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .scan-action-btn.secondary {
+            background: #f3f4f6;
+            color: var(--text);
+        }
+
+        .scan-spinner {
+            display: none;
+            text-align: center;
+            padding: 24px;
+        }
+
+        .scan-spinner.active {
+            display: block;
+        }
+
+        .scan-spinner .spinner-icon {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--pastel-blue);
+            border-top-color: var(--lidl-blue);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .scan-spinner .spinner-text {
+            font-size: 14px;
+            color: var(--text-light);
+            font-weight: 500;
+        }
+
+        .scan-result {
+            display: none;
+        }
+
+        .scan-result.active {
+            display: block;
+        }
+
+        .scan-result .form-group {
+            margin-bottom: 12px;
+        }
+
+        .scan-result .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-light);
+            margin-bottom: 4px;
+        }
+
+        .scan-result input,
+        .scan-result textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            background: white;
+            color: var(--text);
+            font-family: inherit;
+        }
+
+        .scan-result textarea {
+            min-height: 120px;
+            resize: vertical;
+            line-height: 1.6;
+        }
+
+        .scan-result input:focus,
+        .scan-result textarea:focus {
+            border-color: var(--lidl-blue);
+        }
+
+        .scan-result-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .scan-result-row .form-group {
+            flex: 1;
+        }
+
+        .scan-error {
+            display: none;
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+
+        .scan-error.active {
+            display: block;
+        }
+
+        .scan-recipe-btn {
+            background: none;
+            border: 2px solid var(--lidl-blue);
+            color: var(--lidl-blue);
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 8px;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .scan-recipe-btn:hover {
+            background: var(--lidl-blue);
+            color: white;
+        }
+
+        /* Gemini key section */
+        .gemini-key-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            font-size: 14px;
+            font-family: 'SF Mono', monospace;
+            outline: none;
+            background: white;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+
+        .gemini-key-input:focus {
+            border-color: var(--lidl-blue);
+        }
+
+        .gemini-key-link {
+            display: inline-block;
+            font-size: 13px;
+            color: var(--lidl-blue);
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        .gemini-key-status {
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-content">
+        <div class="logo">
+            <div class="logo-icon">LIDL</div>
+            <h1>Boodschappen</h1>
+        </div>
+        <div class="header-right">
+            <div class="sync-indicator" id="syncIndicator" title="Niet verbonden"></div>
+            <div class="header-badge" id="itemCount">0 items</div>
+        </div>
+    </div>
+</div>
+
+<div class="tabs">
+    <button class="tab active" onclick="switchTab('list')">
+        <span class="tab-icon">&#x1F6D2;</span>
+        Lijst
+    </button>
+    <button class="tab" onclick="switchTab('recipes')">
+        <span class="tab-icon">&#x1F4D6;</span>
+        Recepten
+    </button>
+    <button class="tab" onclick="switchTab('sync')">
+        <span class="tab-icon">&#x1F504;</span>
+        Sync
+    </button>
+</div>
+
+<div class="content">
+    <!-- Shopping List Page -->
+    <div class="page active" id="page-list">
+        <div class="add-item-bar">
+            <input type="text" id="newItemInput" placeholder="Zoek Lidl product..."
+                   oninput="onSearchInput()" onkeydown="onSearchKeydown(event)" autocomplete="off">
+            <button onclick="addItemFromInput()">+ Voeg toe</button>
+            <div class="autocomplete-dropdown" id="autocompleteDropdown"></div>
+        </div>
+
+        <div class="list-actions">
+            <button class="list-action-btn fridge" onclick="openFridgeModal()">
+                <span class="btn-icon">&#x1F9CA;</span> Koelkast scan
+            </button>
+            <button class="list-action-btn copy" onclick="copyListToClipboard()">
+                <span class="btn-icon">&#x1F4CB;</span> Kopieer
+            </button>
+            <button class="list-action-btn share" onclick="shareList()">
+                <span class="btn-icon">&#x1F4E4;</span> Deel
+            </button>
+        </div>
+
+        <div id="shoppingList"></div>
+
+        <div class="empty-state" id="emptyState">
+            <div class="empty-state-icon">&#x1F6D2;</div>
+            <p>Je boodschappenlijst is leeg.<br>Voeg artikelen toe of kies een recept!</p>
+        </div>
+    </div>
+
+    <!-- Recipes Page -->
+    <div class="page" id="page-recipes">
+        <button class="toggle-form-btn" id="toggleFormBtn" onclick="toggleRecipeForm()">
+            + Nieuw recept toevoegen
+        </button>
+        <button class="scan-recipe-btn" id="scanRecipeBtn" onclick="openScanModal()">
+            &#x1F4F8; Recept van foto importeren
+        </button>
+
+        <div class="add-recipe-section" id="recipeForm" style="display:none;">
+            <h3>Nieuw Recept</h3>
+            <div class="form-group">
+                <label>Naam recept</label>
+                <input type="text" id="recipeName" placeholder="bijv. Pasta Bolognese">
+            </div>
+            <div class="form-group">
+                <label>Emoji</label>
+                <input type="text" id="recipeEmoji" placeholder="Kies hieronder" maxlength="4">
+                <div class="emoji-suggestions" id="emojiSuggestions">
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F35D;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F969;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F957;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F35B;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F355;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F32E;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F363;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F96A;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F372;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F95F;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F96C;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F41F;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F35E;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F382;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F959;</span>
+                    <span class="emoji-option" onclick="pickEmoji(this)">&#x1F354;</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Personen</label>
+                <input type="number" id="recipeServings" placeholder="4" min="1" value="4">
+            </div>
+            <div class="form-group">
+                <label>Bereidingstijd</label>
+                <input type="text" id="recipeTime" placeholder="bijv. 30 min">
+            </div>
+            <div class="form-group">
+                <label>Ingredi&#235;nten</label>
+                <textarea id="recipeIngredients" placeholder="E&#233;n ingredi&#235;nt per regel, bijv:&#10;400g spaghetti&#10;500g gehakt&#10;1 ui"></textarea>
+                <div class="form-hint">E&#233;n ingredi&#235;nt per regel</div>
+            </div>
+            <div class="form-buttons">
+                <button class="btn-cancel" onclick="toggleRecipeForm()">Annuleer</button>
+                <button class="btn-save" onclick="saveRecipe()">Opslaan</button>
+            </div>
+        </div>
+
+        <div class="category-filter" id="categoryFilter"></div>
+
+        <div id="recipeList"></div>
+    </div>
+
+    <!-- Sync Page -->
+    <div class="page" id="page-sync">
+        <div class="sync-card" id="syncSetupCard">
+            <h3>Deel met je huishouden</h3>
+            <p>Synchroniseer je boodschappenlijst en recepten tussen meerdere iPhones. Maak een huishouden aan of voer een bestaande code in.</p>
+
+            <div id="syncNotConnected">
+                <button class="sync-btn primary" onclick="createHousehold()">Nieuw huishouden aanmaken</button>
+
+                <div style="text-align:center; padding:12px 0; color:var(--text-light); font-size:13px;">of voer een bestaande code in</div>
+
+                <div class="sync-input-group">
+                    <input type="text" id="joinCodeInput" placeholder="CODE" maxlength="6"
+                           oninput="this.value=this.value.toUpperCase()">
+                    <button onclick="joinHousehold()">Deelnemen</button>
+                </div>
+            </div>
+
+            <div id="syncConnected" style="display:none;">
+                <div class="sync-status" id="syncStatusDisplay">
+                    <span>&#x2713;</span> Verbonden met huishouden
+                </div>
+
+                <div class="sync-code-display">
+                    <div class="code" id="currentSyncCode">------</div>
+                    <div class="label">Deel deze code met je huishouden</div>
+                </div>
+
+                <button class="sync-btn secondary" onclick="copySyncCode()">Code kopi&#235;ren</button>
+                <button class="sync-btn danger" onclick="disconnectHousehold()">Verbinding verbreken</button>
+            </div>
+        </div>
+
+        <div class="sync-card">
+            <h3>Productcatalogus</h3>
+            <p style="margin-bottom:8px;">De app bevat een ingebouwde database van Lidl producten voor autocomplete en categorisering.</p>
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:var(--pastel-blue); border-radius:8px; margin-bottom:8px;">
+                <div>
+                    <div style="font-weight:600; font-size:14px; color:var(--text);">Versie: <span id="catalogVersion"></span></div>
+                    <div style="font-size:12px; color:var(--text-light);"><span id="catalogCount"></span> producten</div>
+                </div>
+                <div style="font-size:22px;">\u{1F6D2}</div>
+            </div>
+            <p style="font-size:12px; color:var(--text-light);">De catalogus wordt bijgewerkt met app-updates. Typ een productnaam in het zoekveld om Lidl producten te vinden.</p>
+        </div>
+
+        <div class="sync-card">
+            <h3>Over Firebase</h3>
+            <p style="font-size:13px; color:var(--text-light);">De sync draait op Firebase Realtime Database. De verbinding wordt automatisch opgezet. Als er problemen zijn met synchronisatie, probeer de app opnieuw te laden.</p>
+            <div id="firebaseStatusInfo" style="padding:8px 12px; background:#d1fae5; border-radius:8px; font-size:13px; color:#065f46; margin-top:8px;">
+                \u{2705} Firebase is automatisch verbonden
+            </div>
+        </div>
+
+        <div class="sync-card">
+            <h3>AI Receptherkenning</h3>
+            <p>Om recepten van foto's te herkennen heb je een gratis Google Gemini API key nodig.</p>
+            <input type="password" class="gemini-key-input" id="geminiKeyInput"
+                   placeholder="Plak je Gemini API key hier">
+            <button class="sync-btn primary" onclick="saveGeminiKey()">API key opslaan</button>
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="gemini-key-link">
+                Gratis key aanmaken bij Google AI Studio &#x2192;
+            </a>
+            <div class="gemini-key-status" id="geminiKeyStatus" style="display:none;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Fridge Scan Modal -->
+<div class="scan-modal-overlay" id="fridgeModalOverlay" onclick="if(event.target===this)closeFridgeModal()">
+    <div class="scan-modal">
+        <div class="scan-modal-header">
+            <h3>&#x1F9CA; Koelkast scannen</h3>
+            <button class="scan-close-btn" onclick="closeFridgeModal()">&#x2715;</button>
+        </div>
+
+        <p style="font-size:14px; color:var(--text-light); margin-bottom:14px; line-height:1.5;">
+            Maak een foto van je koelkast, voorraadkast of vriezer. De AI analyseert wat je hebt en stelt voor wat je moet bijkopen.
+        </p>
+
+        <!-- Upload area -->
+        <div class="scan-upload-area" id="fridgeUploadArea" onclick="document.getElementById('fridgeFileInput').click()">
+            <div class="scan-upload-icon" id="fridgeUploadIcon">&#x1F4F7;</div>
+            <div class="scan-upload-text" id="fridgeUploadText">Tik om een foto te kiezen</div>
+            <div class="scan-upload-hint">Koelkast, voorraadkast of vriezer</div>
+            <img class="scan-preview" id="fridgePreview" alt="Preview">
+        </div>
+        <input type="file" id="fridgeFileInput" accept="image/*" capture="environment"
+               style="display:none" onchange="onFridgePhotoSelected(event)">
+
+        <!-- Error message -->
+        <div class="scan-error" id="fridgeError"></div>
+
+        <!-- Spinner -->
+        <div class="scan-spinner" id="fridgeSpinner">
+            <div class="spinner-icon"></div>
+            <div class="spinner-text">Koelkast analyseren met AI...</div>
+        </div>
+
+        <!-- Action buttons (before scan) -->
+        <div id="fridgeActions">
+            <button class="scan-action-btn primary" id="fridgeScanBtn" onclick="scanFridge()" disabled>
+                &#x1F50D; Analyseer wat ik moet kopen
+            </button>
+        </div>
+
+        <!-- Result (after scan) -->
+        <div class="scan-result" id="fridgeResult">
+            <div class="fridge-summary" id="fridgeSummary"></div>
+            <p style="font-size:13px; color:var(--text-light); margin-bottom:10px; font-weight:600;">Selecteer wat je wilt toevoegen:</p>
+            <ul class="fridge-result-list" id="fridgeResultList"></ul>
+            <button class="scan-action-btn primary" onclick="addFridgeItems()" style="margin-top:14px;">
+                &#x1F6D2; Voeg geselecteerde toe aan lijst
+            </button>
+            <button class="scan-action-btn secondary" onclick="resetFridge()">
+                &#x1F504; Opnieuw scannen
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Scan Recipe Modal -->
+<div class="scan-modal-overlay" id="scanModalOverlay" onclick="if(event.target===this)closeScanModal()">
+    <div class="scan-modal">
+        <div class="scan-modal-header">
+            <h3>&#x1F4F8; Recept van foto</h3>
+            <button class="scan-close-btn" onclick="closeScanModal()">&#x2715;</button>
+        </div>
+
+        <!-- Upload area -->
+        <div class="scan-upload-area" id="scanUploadArea" onclick="document.getElementById('scanFileInput').click()">
+            <div class="scan-upload-icon" id="scanUploadIcon">&#x1F4F7;</div>
+            <div class="scan-upload-text" id="scanUploadText">Tik om een foto te kiezen</div>
+            <div class="scan-upload-hint">Camera, fotobibliotheek of screenshot</div>
+            <img class="scan-preview" id="scanPreview" alt="Preview">
+        </div>
+        <input type="file" id="scanFileInput" accept="image/*" capture="environment"
+               style="display:none" onchange="onPhotoSelected(event)">
+
+        <!-- Error message -->
+        <div class="scan-error" id="scanError"></div>
+
+        <!-- Spinner -->
+        <div class="scan-spinner" id="scanSpinner">
+            <div class="spinner-icon"></div>
+            <div class="spinner-text">Recept herkennen met AI...</div>
+        </div>
+
+        <!-- Action buttons (before scan) -->
+        <div id="scanActions">
+            <button class="scan-action-btn primary" id="scanBtn" onclick="scanRecipe()" disabled>
+                &#x1F50D; Recept herkennen
+            </button>
+        </div>
+
+        <!-- Result form (after scan) -->
+        <div class="scan-result" id="scanResult">
+            <div class="form-group">
+                <label>Naam recept</label>
+                <input type="text" id="scanResultName" placeholder="Receptnaam">
+            </div>
+            <div class="scan-result-row">
+                <div class="form-group">
+                    <label>Personen</label>
+                    <input type="number" id="scanResultServings" value="4" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Bereidingstijd</label>
+                    <input type="text" id="scanResultTime" placeholder="30 min">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Ingredi&#235;nten</label>
+                <textarea id="scanResultIngredients" placeholder="E&#233;n per regel"></textarea>
+            </div>
+            <button class="scan-action-btn primary" onclick="saveScanResult()">
+                &#x2705; Recept opslaan
+            </button>
+            <button class="scan-action-btn secondary" onclick="resetScan()">
+                &#x1F504; Opnieuw scannen
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============ CATALOGUS VERSIE ============
+const CATALOG_VERSION = '2026.02.06b';
+
+// ============ LIDL PRODUCT DATABASE ============
+const LIDL_PRODUCTS = [
+    // ===== GROENTE & FRUIT =====
+    {name:'Aardappelen kruimig 2,5kg',cat:'Groente & Fruit',kw:['aardappel','pieper','kruimig']},{name:'Aardappelen vastkokend 2kg',cat:'Groente & Fruit',kw:['aardappel','pieper','vastkokend']},{name:'Aardappelen Nicola',cat:'Groente & Fruit',kw:['aardappel','nicola']},{name:'Zoete aardappel',cat:'Groente & Fruit',kw:['zoete aardappel','bataat','sweet potato']},{name:'Aubergine',cat:'Groente & Fruit',kw:['aubergine']},{name:'Avocado',cat:'Groente & Fruit',kw:['avocado']},{name:'Bananen',cat:'Groente & Fruit',kw:['banaan','bananen']},{name:'Basilicum vers',cat:'Groente & Fruit',kw:['basilicum']},{name:'Bieslook vers',cat:'Groente & Fruit',kw:['bieslook']},{name:'Bloemkool',cat:'Groente & Fruit',kw:['bloemkool']},{name:'Boerenkool',cat:'Groente & Fruit',kw:['boerenkool']},{name:'Broccoli',cat:'Groente & Fruit',kw:['broccoli']},{name:'Champignons 250g',cat:'Groente & Fruit',kw:['champignon','paddenstoel']},{name:'Champignons kastanje 250g',cat:'Groente & Fruit',kw:['champignon','kastanje']},{name:'Cherry tomaten 250g',cat:'Groente & Fruit',kw:['cherry','cherrytomaatjes','tomaatjes']},{name:'Citroen',cat:'Groente & Fruit',kw:['citroen']},{name:'Courgette',cat:'Groente & Fruit',kw:['courgette']},{name:'Druiven blauw 500g',cat:'Groente & Fruit',kw:['druiven','blauw']},{name:'Druiven wit 500g',cat:'Groente & Fruit',kw:['druiven','wit']},{name:'Andijvie',cat:'Groente & Fruit',kw:['andijvie']},{name:'IJsbergsla',cat:'Groente & Fruit',kw:['ijsbergsla','sla','ijsberg']},{name:'Komkommer',cat:'Groente & Fruit',kw:['komkommer']},{name:'Knoflook 3 stuks',cat:'Groente & Fruit',kw:['knoflook','teentje']},{name:'Limoen',cat:'Groente & Fruit',kw:['limoen','limoenensap']},{name:'Mango',cat:'Groente & Fruit',kw:['mango']},{name:'Paprika rood',cat:'Groente & Fruit',kw:['paprika','rood']},{name:'Paprika geel',cat:'Groente & Fruit',kw:['paprika','geel']},{name:'Paprika groen',cat:'Groente & Fruit',kw:['paprika','groen']},{name:'Paprika punt rood',cat:'Groente & Fruit',kw:['puntpaprika','punt']},{name:'Peterselie vers',cat:'Groente & Fruit',kw:['peterselie']},{name:'Prei',cat:'Groente & Fruit',kw:['prei']},{name:'Rode kool',cat:'Groente & Fruit',kw:['rode kool','rodekool']},{name:'Rode ui',cat:'Groente & Fruit',kw:['rode ui']},{name:'Rucola 75g',cat:'Groente & Fruit',kw:['rucola']},{name:'Sla kroppen romaine',cat:'Groente & Fruit',kw:['romaine','sla','krop']},{name:'Kropsla',cat:'Groente & Fruit',kw:['kropsla','sla','krop']},{name:'Sperziebonen 400g',cat:'Groente & Fruit',kw:['sperziebonen','boontjes']},{name:'Snijbonen 300g',cat:'Groente & Fruit',kw:['snijbonen','bonen']},{name:'Spinazie vers 200g',cat:'Groente & Fruit',kw:['spinazie']},{name:'Tomaten los',cat:'Groente & Fruit',kw:['tomaat','tomaten']},{name:'Trostomaten',cat:'Groente & Fruit',kw:['trostomaat','trostomaten']},{name:'Roma tomaten',cat:'Groente & Fruit',kw:['roma','tomaat','pomodori']},{name:'Uien geel net 1kg',cat:'Groente & Fruit',kw:['ui','uien']},{name:'Witte kool',cat:'Groente & Fruit',kw:['witte kool']},{name:'Witlof',cat:'Groente & Fruit',kw:['witlof']},{name:'Wortel',cat:'Groente & Fruit',kw:['wortel','wortelen','winterpeen']},{name:'Venkel',cat:'Groente & Fruit',kw:['venkel']},{name:'Selderij',cat:'Groente & Fruit',kw:['selderij','bleekselderij']},{name:'Knolselderij',cat:'Groente & Fruit',kw:['knolselderij']},{name:'Radijs',cat:'Groente & Fruit',kw:['radijs']},{name:'Rode biet gekookt',cat:'Groente & Fruit',kw:['rode biet','biet']},{name:'Spitskool',cat:'Groente & Fruit',kw:['spitskool']},{name:'Paksoi',cat:'Groente & Fruit',kw:['paksoi','bok choy']},{name:'Taugé 300g',cat:'Groente & Fruit',kw:['tauge','taugé']},{name:'Veldsla 100g',cat:'Groente & Fruit',kw:['veldsla']},{name:'Slamix 250g',cat:'Groente & Fruit',kw:['slamix','gemengde salade']},{name:'Worteljulienne',cat:'Groente & Fruit',kw:['worteljulienne','rauwkost']},{name:'Roerbakgroenten vers',cat:'Groente & Fruit',kw:['roerbak','groenten','wok']},{name:'Tuinkers',cat:'Groente & Fruit',kw:['tuinkers']},{name:'Appels Elstar',cat:'Groente & Fruit',kw:['appel','elstar']},{name:'Appels Jonagold',cat:'Groente & Fruit',kw:['appel','jonagold']},{name:'Appels Granny Smith',cat:'Groente & Fruit',kw:['appel','granny smith','groen']},{name:'Appels Pink Lady',cat:'Groente & Fruit',kw:['appel','pink lady']},{name:'Peren Conference',cat:'Groente & Fruit',kw:['peer','peren','conference']},{name:'Sinaasappelen net',cat:'Groente & Fruit',kw:['sinaasappel','sinasappel']},{name:'Mandarijnen net',cat:'Groente & Fruit',kw:['mandarijn','clementine']},{name:'Aardbeien 400g',cat:'Groente & Fruit',kw:['aardbei','aardbeien']},{name:'Frambozen 125g',cat:'Groente & Fruit',kw:['framboos','frambozen']},{name:'Blauwe bessen 125g',cat:'Groente & Fruit',kw:['blauwe bessen','bosbes']},{name:'Ananas',cat:'Groente & Fruit',kw:['ananas']},{name:'Kiwi 4 stuks',cat:'Groente & Fruit',kw:['kiwi']},{name:'Watermeloen',cat:'Groente & Fruit',kw:['watermeloen','meloen']},{name:'Galia meloen',cat:'Groente & Fruit',kw:['galia','meloen']},{name:'Granaatappel',cat:'Groente & Fruit',kw:['granaatappel']},{name:'Nectarine',cat:'Groente & Fruit',kw:['nectarine']},{name:'Perzik',cat:'Groente & Fruit',kw:['perzik']},{name:'Pruimen',cat:'Groente & Fruit',kw:['pruim','pruimen']},{name:'Kokosnoot',cat:'Groente & Fruit',kw:['kokosnoot','kokos']},{name:'Passievrucht',cat:'Groente & Fruit',kw:['passievrucht','maracuja']},{name:'Gember',cat:'Groente & Fruit',kw:['gember']},{name:'Bosui',cat:'Groente & Fruit',kw:['bosui','lente-ui']},{name:'Sjalot',cat:'Groente & Fruit',kw:['sjalot']},{name:'Koriander vers',cat:'Groente & Fruit',kw:['koriander']},{name:'Munt vers',cat:'Groente & Fruit',kw:['munt','muntblaadjes']},{name:'Rozemarijn vers',cat:'Groente & Fruit',kw:['rozemarijn']},{name:'Tijm vers',cat:'Groente & Fruit',kw:['tijm','vers']},{name:'Dille vers',cat:'Groente & Fruit',kw:['dille']},{name:'Chilipeper vers',cat:'Groente & Fruit',kw:['chilipeper','peper','heet']},{name:'Jalapeno',cat:'Groente & Fruit',kw:['jalapeno','peper']},{name:'Mais kolf',cat:'Groente & Fruit',kw:['mais','kolf']},
+
+    // ===== VLEES, VIS & VEGA =====
+    {name:'Kipfilet 500g',cat:'Vlees & Vis',kw:['kip','kipfilet']},{name:'Kipdrumsticks',cat:'Vlees & Vis',kw:['drumstick','kip','poot']},{name:'Kippendijen',cat:'Vlees & Vis',kw:['kippendij','dij','kip']},{name:'Kippenvleugels',cat:'Vlees & Vis',kw:['vleugel','kip','wings']},{name:'Kipgehakt 500g',cat:'Vlees & Vis',kw:['kipgehakt','kip','gehakt']},{name:'Hele kip',cat:'Vlees & Vis',kw:['hele kip','braadkip']},{name:'Rundergehakt 500g',cat:'Vlees & Vis',kw:['gehakt','rundergehakt','runder']},{name:'Half-om-half gehakt 500g',cat:'Vlees & Vis',kw:['gehakt','half om half']},{name:'Varkensgehakt 500g',cat:'Vlees & Vis',kw:['gehakt','varkensgehakt','varken']},{name:'Runderbiefstuk',cat:'Vlees & Vis',kw:['biefstuk','steak','rund']},{name:'Runderentrecote',cat:'Vlees & Vis',kw:['entrecote','rund','steak']},{name:'Rundersucade',cat:'Vlees & Vis',kw:['sucade','rundvlees','stoofvlees']},{name:'Varkenshaas',cat:'Vlees & Vis',kw:['varkenshaas']},{name:'Varkenslappen',cat:'Vlees & Vis',kw:['varkenslap','lap']},{name:'Varkensschnitzel',cat:'Vlees & Vis',kw:['schnitzel','varken']},{name:'Spare ribs',cat:'Vlees & Vis',kw:['spare ribs','ribben']},{name:'Lamsrack',cat:'Vlees & Vis',kw:['lam','rack','lamsrack']},{name:'Lamskotelet',cat:'Vlees & Vis',kw:['lam','kotelet']},{name:'Spekblokjes 200g',cat:'Vlees & Vis',kw:['spek','spekblokjes','bacon']},{name:'Ontbijtspek',cat:'Vlees & Vis',kw:['ontbijtspek','bacon','spek']},{name:'Rookworst',cat:'Vlees & Vis',kw:['rookworst']},{name:'Braadworst',cat:'Vlees & Vis',kw:['braadworst']},{name:'Knakworst',cat:'Vlees & Vis',kw:['knakworst']},{name:'Chipolataworstjes',cat:'Vlees & Vis',kw:['chipolata','worst']},{name:'Chorizo',cat:'Vlees & Vis',kw:['chorizo']},{name:'Salami',cat:'Vlees & Vis',kw:['salami']},{name:'Prosciutto crudo',cat:'Vlees & Vis',kw:['prosciutto','parmaham']},{name:'Mortadella',cat:'Vlees & Vis',kw:['mortadella']},{name:'Dulano achterham',cat:'Vlees & Vis',kw:['dulano','achterham','ham']},{name:'Dulano kipfilet beleg',cat:'Vlees & Vis',kw:['dulano','kipfilet','beleg','gerookt']},{name:'Dulano boterhamworst',cat:'Vlees & Vis',kw:['dulano','boterhamworst']},{name:'Dulano cervelaatworst',cat:'Vlees & Vis',kw:['dulano','cervelaat']},{name:'Dulano rookvlees',cat:'Vlees & Vis',kw:['dulano','rookvlees']},{name:'Kalkoenfilet beleg',cat:'Vlees & Vis',kw:['kalkoen','beleg']},{name:'Gehaktballen',cat:'Vlees & Vis',kw:['gehaktbal','bal']},{name:'Slavink',cat:'Vlees & Vis',kw:['slavink']},{name:'Shoarma kip 400g',cat:'Vlees & Vis',kw:['shoarma','kip']},{name:'Shoarma vlees 400g',cat:'Vlees & Vis',kw:['shoarma','vlees']},{name:'Zalmmoot 2 stuks',cat:'Vlees & Vis',kw:['zalm','vis','zalmfilet']},{name:'Zalm gerookt',cat:'Vlees & Vis',kw:['zalm','gerookt','rookzalm']},{name:'Pangasiusfilet',cat:'Vlees & Vis',kw:['pangasius','vis']},{name:'Kabeljauwfilet',cat:'Vlees & Vis',kw:['kabeljauw','vis']},{name:'Tilapiafilet',cat:'Vlees & Vis',kw:['tilapia','vis']},{name:'Garnalen 200g',cat:'Vlees & Vis',kw:['garnaal','garnalen']},{name:'Tonijn blik',cat:'Vlees & Vis',kw:['tonijn']},{name:'Kibbeling',cat:'Vlees & Vis',kw:['kibbeling','vis']},{name:'Haring',cat:'Vlees & Vis',kw:['haring','hollandse']},{name:'Gerookte makreel',cat:'Vlees & Vis',kw:['makreel','gerookt']},{name:'Mosselen',cat:'Vlees & Vis',kw:['mossel','mosselen']},{name:'Ansjovisfilets',cat:'Vlees & Vis',kw:['ansjovis']},{name:'Vega burger',cat:'Vlees & Vis',kw:['vega','burger','vegetarisch']},{name:'Vega schnitzel',cat:'Vlees & Vis',kw:['vega','schnitzel','vegetarisch']},{name:'Vega gehakt',cat:'Vlees & Vis',kw:['vega','gehakt','vegetarisch','plantaardig']},{name:'Vega balletjes',cat:'Vlees & Vis',kw:['vega','balletjes','vegetarisch']},{name:'Tofu naturel',cat:'Vlees & Vis',kw:['tofu']},{name:'Tempeh',cat:'Vlees & Vis',kw:['tempeh']},{name:'Falafel',cat:'Vlees & Vis',kw:['falafel']},{name:'Hummus',cat:'Vlees & Vis',kw:['hummus']},{name:'Vegan rookworst',cat:'Vlees & Vis',kw:['vegan','rookworst','plantaardig']},
+
+    // ===== ZUIVEL & EIEREN (Milbona) =====
+    {name:'Milbona volle melk 1L',cat:'Zuivel & Eieren',kw:['melk','volle melk','milbona']},{name:'Milbona halfvolle melk 1L',cat:'Zuivel & Eieren',kw:['melk','halfvolle','milbona']},{name:'Milbona magere melk 1L',cat:'Zuivel & Eieren',kw:['melk','magere','mager','milbona']},{name:'Milbona karnemelk 1L',cat:'Zuivel & Eieren',kw:['karnemelk','milbona']},{name:'Milbona chocomelk 1L',cat:'Zuivel & Eieren',kw:['chocomelk','chocolademelk','milbona']},{name:'Milbona lactosevrije melk',cat:'Zuivel & Eieren',kw:['lactosevrij','melk','milbona']},{name:'Milbona slagroom 200ml',cat:'Zuivel & Eieren',kw:['slagroom','room','milbona']},{name:'Milbona kookroom 200ml',cat:'Zuivel & Eieren',kw:['kookroom','room','milbona']},{name:'Milbona roomboter 250g',cat:'Zuivel & Eieren',kw:['boter','roomboter','milbona']},{name:'Milbona ongezouten boter',cat:'Zuivel & Eieren',kw:['boter','ongezouten','milbona']},{name:'Halvarine',cat:'Zuivel & Eieren',kw:['halvarine','margarine']},{name:'Eieren 10 stuks scharrel',cat:'Zuivel & Eieren',kw:['ei','eieren','scharrel']},{name:'Eieren 6 stuks vrije uitloop',cat:'Zuivel & Eieren',kw:['ei','eieren','vrije uitloop']},{name:'Milbona geraspte kaas jong 200g',cat:'Zuivel & Eieren',kw:['kaas','geraspt','jong','milbona']},{name:'Milbona geraspte kaas belegen',cat:'Zuivel & Eieren',kw:['kaas','geraspt','belegen','milbona']},{name:'Milbona Goudse jong gesneden',cat:'Zuivel & Eieren',kw:['kaas','gouda','jong','plak','milbona']},{name:'Milbona Goudse belegen gesneden',cat:'Zuivel & Eieren',kw:['kaas','gouda','belegen','plak','milbona']},{name:'Milbona Goudse extra belegen',cat:'Zuivel & Eieren',kw:['kaas','extra belegen','milbona']},{name:'Milbona Goudse oud',cat:'Zuivel & Eieren',kw:['kaas','oud','milbona']},{name:'Milbona Goudse komijn',cat:'Zuivel & Eieren',kw:['kaas','komijn','milbona']},{name:'Parmezaanse kaas geraspt',cat:'Zuivel & Eieren',kw:['parmezaan','kaas','parmigiano']},{name:'Mozzarella 125g',cat:'Zuivel & Eieren',kw:['mozzarella']},{name:'Mozzarella buffel',cat:'Zuivel & Eieren',kw:['mozzarella','buffel','burrata']},{name:'Brie',cat:'Zuivel & Eieren',kw:['brie']},{name:'Camembert',cat:'Zuivel & Eieren',kw:['camembert']},{name:'Feta 200g',cat:'Zuivel & Eieren',kw:['feta']},{name:'Geitenkaas',cat:'Zuivel & Eieren',kw:['geitenkaas','chevre']},{name:'Cream cheese',cat:'Zuivel & Eieren',kw:['roomkaas','cream cheese','zuivelspread']},{name:'Milbona Griekse yoghurt 500g',cat:'Zuivel & Eieren',kw:['yoghurt','grieks','griekse','milbona']},{name:'Milbona yoghurt natuur 500g',cat:'Zuivel & Eieren',kw:['yoghurt','natuur','milbona']},{name:'Milbona yoghurt aardbei',cat:'Zuivel & Eieren',kw:['yoghurt','aardbei','milbona']},{name:'Milbona skyr naturel',cat:'Zuivel & Eieren',kw:['skyr','milbona']},{name:'Milbona kwark 500g',cat:'Zuivel & Eieren',kw:['kwark','milbona']},{name:'Milbona kwark aardbei',cat:'Zuivel & Eieren',kw:['kwark','aardbei','fruit','milbona']},{name:'Milbona vla vanille 1L',cat:'Zuivel & Eieren',kw:['vla','vanille','milbona']},{name:'Milbona vla chocolade 1L',cat:'Zuivel & Eieren',kw:['vla','chocolade','milbona']},{name:'Milbona vla aardbei',cat:'Zuivel & Eieren',kw:['vla','aardbei','milbona']},{name:'Milbona rijstpudding',cat:'Zuivel & Eieren',kw:['rijstpudding','dessert','milbona']},{name:'Milbona griesmeelpudding',cat:'Zuivel & Eieren',kw:['griesmeelpudding','griesmeel','milbona']},{name:'Milbona panna cotta',cat:'Zuivel & Eieren',kw:['panna cotta','dessert','milbona']},{name:'Milbona tiramisu',cat:'Zuivel & Eieren',kw:['tiramisu','dessert','milbona']},{name:'Milbona mousse chocolade',cat:'Zuivel & Eieren',kw:['mousse','chocolade','dessert','milbona']},{name:'Milbona drinkontbijt',cat:'Zuivel & Eieren',kw:['drinkontbijt','milbona']},{name:'Cr\u00e8me fra\u00eeche 200ml',cat:'Zuivel & Eieren',kw:['creme fraiche','cr\u00e8me']},{name:'Zure room 200ml',cat:'Zuivel & Eieren',kw:['zure room']},{name:'Ricotta 250g',cat:'Zuivel & Eieren',kw:['ricotta']},{name:'Mascarpone 250g',cat:'Zuivel & Eieren',kw:['mascarpone']},{name:'Huttenk\u00e4se',cat:'Zuivel & Eieren',kw:['huttenk\u00e4se','cottage cheese']},{name:'Haverdrink 1L',cat:'Zuivel & Eieren',kw:['havermelk','haverdrink','plantaardig']},{name:'Sojadrink 1L',cat:'Zuivel & Eieren',kw:['sojamelk','sojadrink','plantaardig']},{name:'Amandeldrink 1L',cat:'Zuivel & Eieren',kw:['amandelmelk','amandeldrink','plantaardig']},
+
+    // ===== BROOD & BAKKERIJ =====
+    {name:'Volkoren brood heel',cat:'Brood & Bakkerij',kw:['brood','volkoren']},{name:'Wit brood heel',cat:'Brood & Bakkerij',kw:['brood','wit']},{name:'Meergranen brood',cat:'Brood & Bakkerij',kw:['brood','meergranen']},{name:'Speltbrood',cat:'Brood & Bakkerij',kw:['brood','spelt']},{name:'Roggebrood',cat:'Brood & Bakkerij',kw:['brood','rogge','roggebrood']},{name:'Tijgerbrood',cat:'Brood & Bakkerij',kw:['brood','tijger','tijgerbrood']},{name:'Zuurdesembrood',cat:'Brood & Bakkerij',kw:['brood','zuurdesem']},{name:'Stokbrood',cat:'Brood & Bakkerij',kw:['stokbrood','baguette']},{name:'Ciabatta',cat:'Brood & Bakkerij',kw:['ciabatta']},{name:'Focaccia',cat:'Brood & Bakkerij',kw:['focaccia']},{name:'Pistolets 6 stuks',cat:'Brood & Bakkerij',kw:['pistolet','broodje']},{name:'Bolletjes wit 6 stuks',cat:'Brood & Bakkerij',kw:['bolletje','broodje','wit']},{name:'Croissants 4 stuks',cat:'Brood & Bakkerij',kw:['croissant']},{name:'Pain au chocolat 4 stuks',cat:'Brood & Bakkerij',kw:['pain au chocolat','chocolade','croissant']},{name:'Pitabroodjes 6 stuks',cat:'Brood & Bakkerij',kw:['pita','pitabroodjes']},{name:'Tortilla wraps 6 stuks',cat:'Brood & Bakkerij',kw:['tortilla','wrap','wraps']},{name:'Naanbrood',cat:'Brood & Bakkerij',kw:['naan','naanbrood']},{name:'Turks brood',cat:'Brood & Bakkerij',kw:['turks brood']},{name:'Hamburgerbroodjes 4 stuks',cat:'Brood & Bakkerij',kw:['hamburgerbroodje','burger']},{name:'Hotdogbroodjes',cat:'Brood & Bakkerij',kw:['hotdog','broodje']},{name:'Beschuit',cat:'Brood & Bakkerij',kw:['beschuit']},{name:'Crackers',cat:'Brood & Bakkerij',kw:['cracker','crackers']},{name:'Kn\u00e4ckebr\u00f6d',cat:'Brood & Bakkerij',kw:['kn\u00e4ckebr\u00f6d','crispbread']},{name:'Ontbijtkoek',cat:'Brood & Bakkerij',kw:['ontbijtkoek','peperkoek']},{name:'Krentenbrood',cat:'Brood & Bakkerij',kw:['krentenbrood','rozijnenbrood']},{name:'Rijstwafel',cat:'Brood & Bakkerij',kw:['rijstwafel']},{name:'Panini broodjes',cat:'Brood & Bakkerij',kw:['panini']},
+
+    // ===== PASTA, RIJST & GRANEN (Combino) =====
+    {name:'Combino spaghetti 500g',cat:'Pasta, Rijst & Granen',kw:['spaghetti','pasta','combino']},{name:'Combino penne 500g',cat:'Pasta, Rijst & Granen',kw:['penne','pasta','combino']},{name:'Combino fusilli 500g',cat:'Pasta, Rijst & Granen',kw:['fusilli','pasta','combino']},{name:'Combino macaroni 500g',cat:'Pasta, Rijst & Granen',kw:['macaroni','pasta','combino']},{name:'Combino tagliatelle 500g',cat:'Pasta, Rijst & Granen',kw:['tagliatelle','pasta','combino']},{name:'Combino farfalle 500g',cat:'Pasta, Rijst & Granen',kw:['farfalle','pasta','strikjes','combino']},{name:'Combino lasagnebladen',cat:'Pasta, Rijst & Granen',kw:['lasagne','bladen','combino']},{name:'Combino tortellini',cat:'Pasta, Rijst & Granen',kw:['tortellini','gevuld','combino']},{name:'Combino ravioli',cat:'Pasta, Rijst & Granen',kw:['ravioli','gevuld','combino']},{name:'Volkoren pasta',cat:'Pasta, Rijst & Granen',kw:['volkoren','pasta']},{name:'Gnocchi',cat:'Pasta, Rijst & Granen',kw:['gnocchi']},{name:'Witte rijst 1kg',cat:'Pasta, Rijst & Granen',kw:['rijst','witte rijst']},{name:'Basmati rijst 1kg',cat:'Pasta, Rijst & Granen',kw:['basmati','rijst']},{name:'Jasminrijst 1kg',cat:'Pasta, Rijst & Granen',kw:['jasmin','jasmine','rijst','pandanrijst','thaise']},{name:'Zilvervliesrijst 1kg',cat:'Pasta, Rijst & Granen',kw:['zilvervlies','rijst','bruin']},{name:'Risottorijst 500g',cat:'Pasta, Rijst & Granen',kw:['risotto','rijst','arborio']},{name:'Pandan rijst 1kg',cat:'Pasta, Rijst & Granen',kw:['pandan','rijst']},{name:'Couscous 500g',cat:'Pasta, Rijst & Granen',kw:['couscous']},{name:'Bulgur 500g',cat:'Pasta, Rijst & Granen',kw:['bulgur']},{name:'Quinoa 400g',cat:'Pasta, Rijst & Granen',kw:['quinoa']},{name:'Polenta',cat:'Pasta, Rijst & Granen',kw:['polenta']},{name:'Noodles wok',cat:'Pasta, Rijst & Granen',kw:['noodle','noodles','mie','wok']},{name:'Ramen noodles',cat:'Pasta, Rijst & Granen',kw:['ramen','noodles']},{name:'Rijstnoedels',cat:'Pasta, Rijst & Granen',kw:['rijstnoedel','rijst','noedel']},{name:'Glasnoedels',cat:'Pasta, Rijst & Granen',kw:['glasnoedel']},{name:'Havermout 500g',cat:'Pasta, Rijst & Granen',kw:['havermout','oats','ontbijt']},{name:'Muesli krokant',cat:'Pasta, Rijst & Granen',kw:['muesli','krokant','ontbijt']},{name:'Cruesli',cat:'Pasta, Rijst & Granen',kw:['cruesli','granola','ontbijt']},{name:'Cornflakes',cat:'Pasta, Rijst & Granen',kw:['cornflakes','ontbijt']},{name:'Bloem tarwe 1kg',cat:'Pasta, Rijst & Granen',kw:['bloem','tarwe','meel']},{name:'Zelfrijzend bakmeel',cat:'Pasta, Rijst & Granen',kw:['bakmeel','zelfrijzend']},{name:'Volkoren meel',cat:'Pasta, Rijst & Granen',kw:['volkoren','meel']},{name:'Ma\u00efzena',cat:'Pasta, Rijst & Granen',kw:['maizena','bindmiddel']},{name:'Panko paneermeel',cat:'Pasta, Rijst & Granen',kw:['panko','paneermeel']},
+
+    // ===== CONSERVEN & SAUZEN =====
+    {name:'Gepelde tomaten blik 400g',cat:'Conserven & Sauzen',kw:['gepelde tomaten','blik','tomaat']},{name:'Tomatenblokjes blik',cat:'Conserven & Sauzen',kw:['tomatenblokjes','blik']},{name:'Tomatenpuree tube',cat:'Conserven & Sauzen',kw:['tomatenpuree','puree']},{name:'Passata 680g',cat:'Conserven & Sauzen',kw:['passata','tomaat']},{name:'Kidneybonen blik 400g',cat:'Conserven & Sauzen',kw:['kidneybonen','bonen']},{name:'Witte bonen blik 400g',cat:'Conserven & Sauzen',kw:['witte bonen','bonen']},{name:'Kikkererwten blik 400g',cat:'Conserven & Sauzen',kw:['kikkererwten']},{name:'Ma\u00efs blik 340g',cat:'Conserven & Sauzen',kw:['mais']},{name:'Linzen blik',cat:'Conserven & Sauzen',kw:['linzen','blik']},{name:'Sperziebonen blik',cat:'Conserven & Sauzen',kw:['sperziebonen','blik']},{name:'Doperwten blik',cat:'Conserven & Sauzen',kw:['doperwten','blik']},{name:'Vita d\'Or olijfolie extra vierge',cat:'Conserven & Sauzen',kw:['olijfolie','olive','vita d\'or']},{name:'Vita d\'Or olijfolie',cat:'Conserven & Sauzen',kw:['olijfolie','vita d\'or']},{name:'Zonnebloemolie 1L',cat:'Conserven & Sauzen',kw:['zonnebloemolie','olie']},{name:'Kokosolie',cat:'Conserven & Sauzen',kw:['kokosolie','kokos']},{name:'Sesamolie',cat:'Conserven & Sauzen',kw:['sesamolie','sesam']},{name:'Sojasaus 250ml',cat:'Conserven & Sauzen',kw:['sojasaus','soja']},{name:'Ketjap manis',cat:'Conserven & Sauzen',kw:['ketjap']},{name:'Sambal oelek',cat:'Conserven & Sauzen',kw:['sambal']},{name:'Sriracha saus',cat:'Conserven & Sauzen',kw:['sriracha','hot sauce']},{name:'Sweet chili saus',cat:'Conserven & Sauzen',kw:['sweet chili','zoete chili']},{name:'Oestersaus',cat:'Conserven & Sauzen',kw:['oestersaus']},{name:'Hoisinsaus',cat:'Conserven & Sauzen',kw:['hoisin']},{name:'Teriyaki saus',cat:'Conserven & Sauzen',kw:['teriyaki']},{name:'Curry pasta rood',cat:'Conserven & Sauzen',kw:['curry','pasta','rood','thai']},{name:'Curry pasta groen',cat:'Conserven & Sauzen',kw:['curry','pasta','groen','thai']},{name:'Kokosmelk 400ml',cat:'Conserven & Sauzen',kw:['kokosmelk','kokos']},{name:'Kokosr room',cat:'Conserven & Sauzen',kw:['kokosroom','kokos']},{name:'Mosterd',cat:'Conserven & Sauzen',kw:['mosterd']},{name:'Dijon mosterd',cat:'Conserven & Sauzen',kw:['dijon','mosterd']},{name:'Ketchup',cat:'Conserven & Sauzen',kw:['ketchup']},{name:'Mayonaise',cat:'Conserven & Sauzen',kw:['mayo','mayonaise']},{name:'Barbecuesaus',cat:'Conserven & Sauzen',kw:['bbq','barbecue','saus']},{name:'Worcestersaus',cat:'Conserven & Sauzen',kw:['worcester']},{name:'Tabasco',cat:'Conserven & Sauzen',kw:['tabasco','hot sauce']},{name:'Witte wijnazijn',cat:'Conserven & Sauzen',kw:['azijn','witte wijn']},{name:'Rode wijnazijn',cat:'Conserven & Sauzen',kw:['azijn','rode wijn']},{name:'Balsamico azijn',cat:'Conserven & Sauzen',kw:['balsamico']},{name:'Appelazijn',cat:'Conserven & Sauzen',kw:['appelazijn','azijn']},{name:'Rijstazijn',cat:'Conserven & Sauzen',kw:['rijstazijn']},{name:'Groentebouillon blokjes',cat:'Conserven & Sauzen',kw:['bouillon','groente']},{name:'Kippenbouillon blokjes',cat:'Conserven & Sauzen',kw:['bouillon','kippen']},{name:'Rundvleesbouillon blokjes',cat:'Conserven & Sauzen',kw:['bouillon','rund']},{name:'Vita d\'Or pindakaas',cat:'Conserven & Sauzen',kw:['pindakaas','vita d\'or']},{name:'Vita d\'Or pindakaas met stukjes',cat:'Conserven & Sauzen',kw:['pindakaas','stukjes','crunchy','vita d\'or']},{name:'Jam aardbei',cat:'Conserven & Sauzen',kw:['jam','aardbei']},{name:'Jam abrikoos',cat:'Conserven & Sauzen',kw:['jam','abrikoos']},{name:'Jam bosvruchten',cat:'Conserven & Sauzen',kw:['jam','bosvruchten']},{name:'Hagelslag melk',cat:'Conserven & Sauzen',kw:['hagelslag','melk','chocolade']},{name:'Hagelslag puur',cat:'Conserven & Sauzen',kw:['hagelslag','puur']},{name:'Hagelslag gemengd',cat:'Conserven & Sauzen',kw:['hagelslag','gemengd']},{name:'Chocoladepasta',cat:'Conserven & Sauzen',kw:['chocoladepasta','chocopasta','nutella']},{name:'Duetti chocoladepasta',cat:'Conserven & Sauzen',kw:['duetti','duo','chocoladepasta']},{name:'Appelstroop',cat:'Conserven & Sauzen',kw:['appelstroop']},{name:'Stroop',cat:'Conserven & Sauzen',kw:['stroop']},{name:'Honing 350g',cat:'Conserven & Sauzen',kw:['honing']},{name:'Pesto groen',cat:'Conserven & Sauzen',kw:['pesto','groen']},{name:'Pesto rosso',cat:'Conserven & Sauzen',kw:['pesto','rosso','rood']},{name:'Pastasaus bolognese',cat:'Conserven & Sauzen',kw:['pastasaus','bolognese','saus']},{name:'Pastasaus arrabbiata',cat:'Conserven & Sauzen',kw:['pastasaus','arrabbiata','saus']},{name:'Pastasaus carbonara',cat:'Conserven & Sauzen',kw:['pastasaus','carbonara']},{name:'Atjar',cat:'Conserven & Sauzen',kw:['atjar']},{name:'Olijven groen',cat:'Conserven & Sauzen',kw:['olijven','groen']},{name:'Olijven zwart',cat:'Conserven & Sauzen',kw:['olijven','zwart']},{name:'Kappertjes',cat:'Conserven & Sauzen',kw:['kappertjes']},{name:'Zongedroogde tomaten',cat:'Conserven & Sauzen',kw:['zongedroogd','tomaat']},{name:'Augurken',cat:'Conserven & Sauzen',kw:['augurk','augurken']},{name:'Zilveruitjes',cat:'Conserven & Sauzen',kw:['zilveruitjes']},{name:'Taco shells El Tequito',cat:'Conserven & Sauzen',kw:['taco','shells','el tequito']},{name:'Salsa El Tequito',cat:'Conserven & Sauzen',kw:['salsa','el tequito']},{name:'Bami goreng kruidenmix',cat:'Conserven & Sauzen',kw:['bami','kruidenmix']},{name:'Nasi goreng kruidenmix',cat:'Conserven & Sauzen',kw:['nasi','kruidenmix']},{name:'Tomatensoep blik',cat:'Conserven & Sauzen',kw:['tomatensoep','soep','blik']},{name:'Groentesoep blik',cat:'Conserven & Sauzen',kw:['groentesoep','soep','blik']},{name:'Kippensoep blik',cat:'Conserven & Sauzen',kw:['kippensoep','soep','blik']},
+
+    // ===== KRUIDEN & SPECERIJEN =====
+    {name:'Zout fijn 500g',cat:'Kruiden & Specerijen',kw:['zout']},{name:'Zeezout grof',cat:'Kruiden & Specerijen',kw:['zeezout','grof']},{name:'Himalayazout',cat:'Kruiden & Specerijen',kw:['himalayazout','roze zout']},{name:'Peper zwart gemalen',cat:'Kruiden & Specerijen',kw:['peper','zwart']},{name:'Peper zwart heel',cat:'Kruiden & Specerijen',kw:['peper','heel','korrel']},{name:'Witte peper gemalen',cat:'Kruiden & Specerijen',kw:['witte peper']},{name:'Cayennepeper',cat:'Kruiden & Specerijen',kw:['cayenne']},{name:'Chilivlokken',cat:'Kruiden & Specerijen',kw:['chilivlokken','chili']},{name:'Paprikapoeder zoet',cat:'Kruiden & Specerijen',kw:['paprikapoeder','paprika','zoet']},{name:'Paprikapoeder gerookt',cat:'Kruiden & Specerijen',kw:['paprikapoeder','gerookt','smoked']},{name:'Komijnpoeder',cat:'Kruiden & Specerijen',kw:['komijn']},{name:'Chilipoeder',cat:'Kruiden & Specerijen',kw:['chili','chilipoeder']},{name:'Nootmuskaat gemalen',cat:'Kruiden & Specerijen',kw:['nootmuskaat']},{name:'Kaneel gemalen',cat:'Kruiden & Specerijen',kw:['kaneel']},{name:'Kaneel stokjes',cat:'Kruiden & Specerijen',kw:['kaneel','stokje']},{name:'Kurkuma',cat:'Kruiden & Specerijen',kw:['kurkuma','geelwortel']},{name:'Koriander gemalen',cat:'Kruiden & Specerijen',kw:['koriander','gemalen']},{name:'Kardemom',cat:'Kruiden & Specerijen',kw:['kardemom']},{name:'Kruidnagel gemalen',cat:'Kruiden & Specerijen',kw:['kruidnagel']},{name:'Gemberpoeder',cat:'Kruiden & Specerijen',kw:['gemberpoeder','gember']},{name:'Foelie gemalen',cat:'Kruiden & Specerijen',kw:['foelie']},{name:'Oregano gedroogd',cat:'Kruiden & Specerijen',kw:['oregano']},{name:'Basilicum gedroogd',cat:'Kruiden & Specerijen',kw:['basilicum','gedroogd']},{name:'Tijm gedroogd',cat:'Kruiden & Specerijen',kw:['tijm']},{name:'Rozemarijn gedroogd',cat:'Kruiden & Specerijen',kw:['rozemarijn']},{name:'Peterselie gedroogd',cat:'Kruiden & Specerijen',kw:['peterselie','gedroogd']},{name:'Bieslook gedroogd',cat:'Kruiden & Specerijen',kw:['bieslook','gedroogd']},{name:'Dille gedroogd',cat:'Kruiden & Specerijen',kw:['dille']},{name:'Laurierblaadjes',cat:'Kruiden & Specerijen',kw:['laurier']},{name:'Salie gedroogd',cat:'Kruiden & Specerijen',kw:['salie']},{name:'Italiaanse kruiden mix',cat:'Kruiden & Specerijen',kw:['italiaanse kruiden','mix']},{name:'Provençaalse kruiden',cat:'Kruiden & Specerijen',kw:['provençaalse','kruiden']},{name:'Gyros kruiden',cat:'Kruiden & Specerijen',kw:['gyros']},{name:'Shoarma kruiden',cat:'Kruiden & Specerijen',kw:['shoarma']},{name:'Kipkruiden',cat:'Kruiden & Specerijen',kw:['kip','kruiden']},{name:'Taco kruiden',cat:'Kruiden & Specerijen',kw:['taco','kruiden']},{name:'Garam masala',cat:'Kruiden & Specerijen',kw:['garam masala','indiaas']},{name:'Ras el hanout',cat:'Kruiden & Specerijen',kw:['ras el hanout','marokkaans']},{name:'Chinese 5-spice',cat:'Kruiden & Specerijen',kw:['chinese','5-spice','vijfkruiden']},{name:'Kerriepoeder',cat:'Kruiden & Specerijen',kw:['kerrie','curry']},{name:'Knoflookpoeder',cat:'Kruiden & Specerijen',kw:['knoflookpoeder']},{name:'Uienpoeder',cat:'Kruiden & Specerijen',kw:['uienpoeder']},{name:'Suiker 1kg',cat:'Kruiden & Specerijen',kw:['suiker','kristalsuiker']},{name:'Rietsuiker',cat:'Kruiden & Specerijen',kw:['rietsuiker','bruin']},{name:'Poedersuiker 250g',cat:'Kruiden & Specerijen',kw:['poedersuiker']},{name:'Basterdsuiker',cat:'Kruiden & Specerijen',kw:['basterdsuiker']},{name:'Vanillesuiker',cat:'Kruiden & Specerijen',kw:['vanille','vanillesuiker']},{name:'Bakpoeder',cat:'Kruiden & Specerijen',kw:['bakpoeder']},{name:'Gist droog',cat:'Kruiden & Specerijen',kw:['gist','droog']},{name:'Vanille extract',cat:'Kruiden & Specerijen',kw:['vanille','extract']},{name:'Cacao poeder',cat:'Kruiden & Specerijen',kw:['cacao','poeder']},{name:'Kokosvlokken',cat:'Kruiden & Specerijen',kw:['kokosvlokken','kokos']},{name:'Rozijnen 250g',cat:'Kruiden & Specerijen',kw:['rozijnen']},{name:'Amandelen 200g',cat:'Kruiden & Specerijen',kw:['amandel','amandelen']},{name:'Walnoten 150g',cat:'Kruiden & Specerijen',kw:['walnoot','walnoten']},{name:'Pijnboompitten 100g',cat:'Kruiden & Specerijen',kw:['pijnboompitten']},{name:'Citroensap flesje',cat:'Kruiden & Specerijen',kw:['citroensap']},
+
+    // ===== DRANKEN (Freeway & Solevita) =====
+    {name:'Freeway cola 1,5L',cat:'Dranken',kw:['cola','freeway']},{name:'Freeway cola zero 1,5L',cat:'Dranken',kw:['cola','zero','freeway']},{name:'Freeway sinas 1,5L',cat:'Dranken',kw:['sinas','fanta','freeway']},{name:'Freeway citroenlimonade',cat:'Dranken',kw:['citroen','limonade','freeway']},{name:'Freeway cassis',cat:'Dranken',kw:['cassis','freeway']},{name:'Freeway tonic water',cat:'Dranken',kw:['tonic','freeway']},{name:'Freeway ginger ale',cat:'Dranken',kw:['ginger ale','freeway']},{name:'Freeway bitter lemon',cat:'Dranken',kw:['bitter lemon','freeway']},{name:'Freeway ice tea citroen',cat:'Dranken',kw:['ice tea','citroen','freeway']},{name:'Freeway ice tea perzik',cat:'Dranken',kw:['ice tea','perzik','freeway']},{name:'Solevita sinaasappelsap 1L',cat:'Dranken',kw:['sinaasappelsap','jus','sap','solevita']},{name:'Solevita appelsap 1L',cat:'Dranken',kw:['appelsap','sap','solevita']},{name:'Solevita multivitamine',cat:'Dranken',kw:['multivitamine','sap','solevita']},{name:'Solevita jus d\'orange vers',cat:'Dranken',kw:['jus','vers','sinaasappel','solevita']},{name:'Solevita tomatensap',cat:'Dranken',kw:['tomatensap','solevita']},{name:'Solevita druivensap',cat:'Dranken',kw:['druivensap','solevita']},{name:'Solevita cranberrysap',cat:'Dranken',kw:['cranberry','sap','solevita']},{name:'Solevita ananassap',cat:'Dranken',kw:['ananassap','solevita']},{name:'Mineraalwater plat 1,5L',cat:'Dranken',kw:['water','mineraalwater','plat']},{name:'Mineraalwater bruisend 1,5L',cat:'Dranken',kw:['water','bruisend','spa']},{name:'Koffie filtermaling 500g',cat:'Dranken',kw:['koffie','filter']},{name:'Koffiebonen 1kg',cat:'Dranken',kw:['koffie','bonen']},{name:'Espresso bonen',cat:'Dranken',kw:['espresso','bonen','koffie']},{name:'Koffiecups Nespresso compatible',cat:'Dranken',kw:['cups','nespresso','koffie','capsule']},{name:'Instantkoffie',cat:'Dranken',kw:['instant','koffie','oploskoffie']},{name:'Cappuccino mix',cat:'Dranken',kw:['cappuccino','koffie']},{name:'Thee zwart',cat:'Dranken',kw:['thee','zwart']},{name:'Thee groene',cat:'Dranken',kw:['thee','groen']},{name:'Thee kamille',cat:'Dranken',kw:['thee','kamille']},{name:'Thee munt',cat:'Dranken',kw:['thee','munt']},{name:'Thee rooibos',cat:'Dranken',kw:['thee','rooibos']},{name:'Thee Earl Grey',cat:'Dranken',kw:['thee','earl grey']},{name:'Thee gember-citroen',cat:'Dranken',kw:['thee','gember','citroen']},{name:'Kordaat pils 6-pack',cat:'Dranken',kw:['bier','pils','kordaat']},{name:'Speciaalbier',cat:'Dranken',kw:['bier','speciaal']},{name:'Radler',cat:'Dranken',kw:['radler','bier']},{name:'Alcoholvrij bier',cat:'Dranken',kw:['bier','alcoholvrij','0.0']},{name:'Cimarosa wijn rood',cat:'Dranken',kw:['wijn','rood','cimarosa']},{name:'Cimarosa wijn wit',cat:'Dranken',kw:['wijn','wit','cimarosa']},{name:'Wijn ros\u00e9',cat:'Dranken',kw:['wijn','ros\u00e9','rose']},{name:'Prosecco',cat:'Dranken',kw:['prosecco','bubbels']},{name:'Energydrink',cat:'Dranken',kw:['energy','energydrink']},{name:'Kokoswater',cat:'Dranken',kw:['kokoswater']},
+
+    // ===== DIEPVRIES =====
+    {name:'Diepvries groentenmix 750g',cat:'Diepvries',kw:['diepvries','groenten','mix']},{name:'Diepvries spinazie 750g',cat:'Diepvries',kw:['diepvries','spinazie']},{name:'Diepvries doperwten 750g',cat:'Diepvries',kw:['diepvries','erwtjes','doperwten']},{name:'Diepvries broccoli roosjes',cat:'Diepvries',kw:['diepvries','broccoli']},{name:'Diepvries roerbakgroenten',cat:'Diepvries',kw:['diepvries','roerbak','wok']},{name:'Diepvries tuinbonen',cat:'Diepvries',kw:['diepvries','tuinbonen']},{name:'Diepvries bosvruchten mix',cat:'Diepvries',kw:['diepvries','bosvruchten','fruit']},{name:'Diepvries aardbeien',cat:'Diepvries',kw:['diepvries','aardbeien','fruit']},{name:'Diepvries mango stukjes',cat:'Diepvries',kw:['diepvries','mango','fruit']},{name:'Diepvries smoothie mix',cat:'Diepvries',kw:['diepvries','smoothie','fruit']},{name:'Diepvries friet 1kg',cat:'Diepvries',kw:['friet','frites','patat']},{name:'Diepvries ovenfriet',cat:'Diepvries',kw:['ovenfriet','friet']},{name:'Diepvries kroketten',cat:'Diepvries',kw:['kroket','kroketten']},{name:'Diepvries bitterballen',cat:'Diepvries',kw:['bitterbal','bitterballen']},{name:'Diepvries aardappelschijfjes',cat:'Diepvries',kw:['aardappelschijf','r\u00f6sti']},{name:'Diepvries pizza margherita',cat:'Diepvries',kw:['pizza','margherita']},{name:'Diepvries pizza salami',cat:'Diepvries',kw:['pizza','salami']},{name:'Diepvries pizza 4 kazen',cat:'Diepvries',kw:['pizza','kaas','quattro']},{name:'Diepvries pizza tonno',cat:'Diepvries',kw:['pizza','tonijn','tonno']},{name:'Diepvries mini pizza\'s',cat:'Diepvries',kw:['pizza','mini']},{name:'Diepvries vissticks',cat:'Diepvries',kw:['visstick','vis']},{name:'Diepvries fishburgers',cat:'Diepvries',kw:['fishburger','vis']},{name:'Diepvries garnalen',cat:'Diepvries',kw:['garnalen','diepvries']},{name:'Diepvries calamaris',cat:'Diepvries',kw:['calamaris','inktvis']},{name:'Diepvries kipnuggets',cat:'Diepvries',kw:['kipnugget','nuggets']},{name:'Diepvries kipvingers',cat:'Diepvries',kw:['kipvinger','kip']},{name:'Diepvries hamburgers',cat:'Diepvries',kw:['hamburger','burger']},{name:'Diepvries lasagne',cat:'Diepvries',kw:['lasagne','maaltijd']},{name:'Diepvries nasi',cat:'Diepvries',kw:['nasi','maaltijd']},{name:'Diepvries bami',cat:'Diepvries',kw:['bami','maaltijd']},{name:'Diepvries stokbrood',cat:'Diepvries',kw:['stokbrood','afbak']},{name:'Diepvries garlic bread',cat:'Diepvries',kw:['garlic bread','knoflookbrood']},{name:'Vanille ijs 1L',cat:'Diepvries',kw:['ijs','vanille']},{name:'Chocolade ijs 1L',cat:'Diepvries',kw:['ijs','chocolade']},{name:'Magnum-style ijsjes',cat:'Diepvries',kw:['ijs','magnum','stok']},{name:'Cornetto-style ijsjes',cat:'Diepvries',kw:['ijs','cornetto','hoorn']},{name:'IJstaart',cat:'Diepvries',kw:['ijstaart','ijs']},
+
+    // ===== SNACKS & SNOEP (Sondey & Sugarland) =====
+    {name:'Kroepoek',cat:'Snacks & Snoep',kw:['kroepoek']},{name:'Chips naturel 225g',cat:'Snacks & Snoep',kw:['chips','naturel']},{name:'Chips paprika 225g',cat:'Snacks & Snoep',kw:['chips','paprika']},{name:'Chips bolognese',cat:'Snacks & Snoep',kw:['chips','bolognese']},{name:'Chips cheese onion',cat:'Snacks & Snoep',kw:['chips','cheese','onion','kaas','ui']},{name:'Ribbelchips',cat:'Snacks & Snoep',kw:['ribbel','chips']},{name:'Tortillachips El Tequito',cat:'Snacks & Snoep',kw:['tortilla','chips','nacho','el tequito']},{name:'Popcorn',cat:'Snacks & Snoep',kw:['popcorn']},{name:'Zoute sticks',cat:'Snacks & Snoep',kw:['zoute sticks','stengels']},{name:'Sondey koekjes',cat:'Snacks & Snoep',kw:['koek','koekjes','sondey']},{name:'Sondey speculaas',cat:'Snacks & Snoep',kw:['speculaas','sondey']},{name:'Sondey stroopwafels',cat:'Snacks & Snoep',kw:['stroopwafel','sondey']},{name:'Sondey biscuits',cat:'Snacks & Snoep',kw:['biscuit','sondey']},{name:'Sondey gevulde koeken',cat:'Snacks & Snoep',kw:['gevulde koek','sondey']},{name:'Sondey eierkoeken',cat:'Snacks & Snoep',kw:['eierkoek','sondey']},{name:'Sugarland drop',cat:'Snacks & Snoep',kw:['drop','sugarland']},{name:'Sugarland winegums',cat:'Snacks & Snoep',kw:['winegum','sugarland']},{name:'Sugarland zure matten',cat:'Snacks & Snoep',kw:['zuur','snoep','matten','sugarland']},{name:'Sugarland tum tum',cat:'Snacks & Snoep',kw:['tum tum','sugarland','snoep']},{name:'Chocolade reep melk',cat:'Snacks & Snoep',kw:['chocolade','chocola','melk']},{name:'Chocolade reep puur',cat:'Snacks & Snoep',kw:['chocolade','chocola','puur']},{name:'Chocolade reep wit',cat:'Snacks & Snoep',kw:['chocolade','wit']},{name:'Bonbons',cat:'Snacks & Snoep',kw:['bonbon','praline','chocolade']},{name:'Neo\'s koekjes',cat:'Snacks & Snoep',kw:['neo','oreo','koekjes']},{name:'Gemengde noten 200g',cat:'Snacks & Snoep',kw:['noten','mix','gemengd']},{name:'Cashewnoten 200g',cat:'Snacks & Snoep',kw:['cashew','noten']},{name:'Pinda\'s gezouten 300g',cat:'Snacks & Snoep',kw:['pinda','pindas']},{name:'Amandelen geroosterd',cat:'Snacks & Snoep',kw:['amandel','geroosterd','noten']},{name:'Walnoten 150g',cat:'Snacks & Snoep',kw:['walnoot','noten']},{name:'Macadamia noten',cat:'Snacks & Snoep',kw:['macadamia','noten']},{name:'Pistachenoten',cat:'Snacks & Snoep',kw:['pistache','noten']},{name:'Studentenhaver',cat:'Snacks & Snoep',kw:['studentenhaver','noten','rozijnen']},{name:'Rijstwafels',cat:'Snacks & Snoep',kw:['rijstwafel']},{name:'Mueslireep',cat:'Snacks & Snoep',kw:['muesli','reep','tussendoor']},
+
+    // ===== HUISHOUDEN (W5 & Formil) =====
+    {name:'W5 allesreiniger',cat:'Huishouden',kw:['allesreiniger','w5','schoonmaak']},{name:'W5 glasreiniger',cat:'Huishouden',kw:['glasreiniger','w5','ramen']},{name:'W5 keukenreiniger',cat:'Huishouden',kw:['keukenreiniger','w5']},{name:'W5 badkamerreiniger',cat:'Huishouden',kw:['badkamerreiniger','w5']},{name:'W5 wc-reiniger',cat:'Huishouden',kw:['wc-reiniger','w5','toilet']},{name:'W5 bleek',cat:'Huishouden',kw:['bleek','w5']},{name:'W5 ontkalkingsmiddel',cat:'Huishouden',kw:['ontkalker','w5']},{name:'W5 afwasmiddel',cat:'Huishouden',kw:['afwasmiddel','afwas','w5']},{name:'Formil wasmiddel vloeibaar',cat:'Huishouden',kw:['wasmiddel','formil','vloeibaar']},{name:'Formil waspoeder',cat:'Huishouden',kw:['wasmiddel','formil','poeder']},{name:'Formil wascapsules',cat:'Huishouden',kw:['wascapsules','formil','pods']},{name:'Formil wasverzachter',cat:'Huishouden',kw:['wasverzachter','formil']},{name:'Vaatwastabletten',cat:'Huishouden',kw:['vaatwas','tablet']},{name:'Vaatwasmiddel',cat:'Huishouden',kw:['vaatwasmiddel']},{name:'Glansspoelmiddel',cat:'Huishouden',kw:['glansspoelmiddel','vaatwas']},{name:'Vaatwasmachinezout',cat:'Huishouden',kw:['vaatwasmachinezout','vaatwas','zout']},{name:'Toiletpapier 8 rollen',cat:'Huishouden',kw:['toiletpapier','wc-papier','wc']},{name:'Keukenpapier 2 rollen',cat:'Huishouden',kw:['keukenpapier','keukenrol']},{name:'Tissues doos',cat:'Huishouden',kw:['tissues','zakdoek']},{name:'Zakdoekjes',cat:'Huishouden',kw:['zakdoekjes']},{name:'Vuilniszakken 60L',cat:'Huishouden',kw:['vuilniszak','afvalzak']},{name:'Pedaalemmerzakken',cat:'Huishouden',kw:['pedaalemmerzak']},{name:'Diepvrieszakjes',cat:'Huishouden',kw:['diepvrieszak']},{name:'Boterhamzakjes',cat:'Huishouden',kw:['boterhamzakje']},{name:'Bakpapier',cat:'Huishouden',kw:['bakpapier']},{name:'Aluminiumfolie',cat:'Huishouden',kw:['aluminiumfolie','folie']},{name:'Huishoudfolie',cat:'Huishouden',kw:['huishoudfolie','plasticfolie','vershoudfolie']},{name:'Schuurspons',cat:'Huishouden',kw:['schuurspons','spons']},{name:'Lucifers',cat:'Huishouden',kw:['lucifers']},{name:'Kaarsen',cat:'Huishouden',kw:['kaars','kaarsen','waxine']},
+
+    // ===== PERSOONLIJKE VERZORGING (Cien) =====
+    {name:'Cien shampoo',cat:'Persoonlijke Verzorging',kw:['shampoo','cien','haar']},{name:'Cien conditioner',cat:'Persoonlijke Verzorging',kw:['conditioner','cien','haar']},{name:'Cien douchegel',cat:'Persoonlijke Verzorging',kw:['douchegel','cien','douche']},{name:'Cien bodylotion',cat:'Persoonlijke Verzorging',kw:['bodylotion','cien']},{name:'Cien handcr\u00e8me',cat:'Persoonlijke Verzorging',kw:['handcr\u00e8me','cien']},{name:'Cien gezichtscr\u00e8me',cat:'Persoonlijke Verzorging',kw:['gezichtscr\u00e8me','cien']},{name:'Cien deodorant',cat:'Persoonlijke Verzorging',kw:['deodorant','deo','cien']},{name:'Cien zonnebrand',cat:'Persoonlijke Verzorging',kw:['zonnebrand','cien','spf']},{name:'Tandpasta',cat:'Persoonlijke Verzorging',kw:['tandpasta','tanden']},{name:'Tandenborstel',cat:'Persoonlijke Verzorging',kw:['tandenborstel']},{name:'Mondwater',cat:'Persoonlijke Verzorging',kw:['mondwater','mondspoeling']},{name:'Scheermesjes',cat:'Persoonlijke Verzorging',kw:['scheermesjes','scheren']},{name:'Scheerschuim',cat:'Persoonlijke Verzorging',kw:['scheerschuim','scheren']},{name:'Maandverband',cat:'Persoonlijke Verzorging',kw:['maandverband']},{name:'Tampons',cat:'Persoonlijke Verzorging',kw:['tampons']},{name:'Wattenstaafjes',cat:'Persoonlijke Verzorging',kw:['wattenstaafjes']},{name:'Wattenschijfjes',cat:'Persoonlijke Verzorging',kw:['wattenschijfjes']},{name:'Haargel',cat:'Persoonlijke Verzorging',kw:['haargel','gel']},{name:'Haarspray',cat:'Persoonlijke Verzorging',kw:['haarspray']},{name:'Lippenbalsem',cat:'Persoonlijke Verzorging',kw:['lippenbalsem','lip']},
+
+    // ===== BABY & KIND (Lupilu) =====
+    {name:'Lupilu luiers maat 3',cat:'Baby & Kind',kw:['luier','luiers','lupilu','baby']},{name:'Lupilu luiers maat 4',cat:'Baby & Kind',kw:['luier','luiers','lupilu','baby']},{name:'Lupilu luiers maat 5',cat:'Baby & Kind',kw:['luier','luiers','lupilu','baby']},{name:'Lupilu billendoekjes',cat:'Baby & Kind',kw:['billendoekje','baby','lupilu']},{name:'Lupilu babycr\u00e8me',cat:'Baby & Kind',kw:['babycr\u00e8me','lupilu']},{name:'Lupilu babyshampoo',cat:'Baby & Kind',kw:['babyshampoo','lupilu']},{name:'Babyvoeding potje',cat:'Baby & Kind',kw:['babyvoeding','potje','baby']},{name:'Kindersap pakje',cat:'Baby & Kind',kw:['kindersap','pakje','sap']},
+
+    // ===== DIERVOEDING (Orlando & Coshida) =====
+    {name:'Orlando hondenbrokken',cat:'Diervoeding',kw:['hond','brokken','orlando']},{name:'Orlando honden natvoer',cat:'Diervoeding',kw:['hond','natvoer','orlando']},{name:'Orlando hondensnacks',cat:'Diervoeding',kw:['hond','snack','orlando']},{name:'Coshida kattenbrokken',cat:'Diervoeding',kw:['kat','brokken','coshida']},{name:'Coshida katten natvoer',cat:'Diervoeding',kw:['kat','natvoer','coshida']},{name:'Coshida kattensnacks',cat:'Diervoeding',kw:['kat','snack','coshida']},{name:'Kattenbakvulling',cat:'Diervoeding',kw:['kattenbakvulling','kattenbak']}
+];
+
+// ============ LIDL CATEGORIES ============
+const LIDL_CATEGORIES = {
+    'Groente & Fruit': '\u{1F96C}',
+    'Vlees & Vis': '\u{1F969}',
+    'Zuivel & Eieren': '\u{1F95B}',
+    'Brood & Bakkerij': '\u{1F35E}',
+    'Dranken': '\u{1F964}',
+    'Pasta, Rijst & Granen': '\u{1F35D}',
+    'Conserven & Sauzen': '\u{1F96B}',
+    'Kruiden & Specerijen': '\u{1F9C2}',
+    'Snacks & Snoep': '\u{1F37F}',
+    'Diepvries': '\u{1F9CA}',
+    'Huishouden': '\u{1F9F9}',
+    'Persoonlijke Verzorging': '\u{1F9F4}',
+    'Baby & Kind': '\u{1F476}',
+    'Diervoeding': '\u{1F43E}',
+    'Overig': '\u{1F4E6}'
+};
+
+const DEFAULT_RECIPES = [
+    {
+        id: 'r1',
+        name: 'Spaghetti Bolognese',
+        emoji: '\u{1F35D}',
+        servings: 4,
+        time: '35 min',
+        category: 'Italiaans',
+        ingredients: [
+            '500g spaghetti', '400g rundergehakt', '2 uien', '3 teentjes knoflook',
+            '2 blikken gepelde tomaten (400g)', '2 el tomatenpuree', '1 wortel',
+            'Italiaanse kruiden', 'Olijfolie', 'Parmezaanse kaas', 'Zout en peper'
+        ]
+    },
+    {
+        id: 'r2',
+        name: 'Stamppot Boerenkool',
+        emoji: '\u{1F96C}',
+        servings: 4,
+        time: '40 min',
+        category: 'Nederlands',
+        ingredients: [
+            '1kg aardappelen (kruimig)', '500g boerenkool', '1 rookworst',
+            '100ml melk', '50g boter', '1 ui', 'Zout en peper', 'Mosterd'
+        ]
+    },
+    {
+        id: 'r3',
+        name: 'Kippengyros met Tzatziki',
+        emoji: '\u{1F959}',
+        servings: 4,
+        time: '25 min',
+        category: 'Grieks',
+        ingredients: [
+            '500g kipfilet', '4 pitabroodjes', '1 komkommer', '200ml Griekse yoghurt',
+            '1 teentje knoflook', '1 rode ui', '2 tomaten', 'IJsbergsla',
+            'Gyros kruiden', 'Olijfolie', 'Citroensap'
+        ]
+    },
+    {
+        id: 'r4',
+        name: 'Nasi Goreng',
+        emoji: '\u{1F35A}',
+        servings: 4,
+        time: '30 min',
+        category: 'Aziatisch',
+        ingredients: [
+            '400g rijst', '300g kipfilet', '2 eieren', '200g diepvries groenten mix',
+            '3 el sojasaus', '2 el ketjap manis', '1 ui', '2 teentjes knoflook',
+            'Sambal', 'Kroepoek', 'Atjar', 'Zonnebloemolie'
+        ]
+    },
+    {
+        id: 'r5',
+        name: 'Tomatensoep',
+        emoji: '\u{1F345}',
+        servings: 4,
+        time: '25 min',
+        category: 'Soepen',
+        ingredients: [
+            '2 blikken gepelde tomaten (400g)', '1 ui', '2 teentjes knoflook',
+            '500ml groentebouillon', '100ml kookroom', '2 el tomatenpuree',
+            'Basilicum (vers)', 'Olijfolie', 'Zout en peper', 'Brood (om te dippen)'
+        ]
+    },
+    {
+        id: 'r6',
+        name: 'Wraps met Kip & Avocado',
+        emoji: '\u{1F32F}',
+        servings: 4,
+        time: '20 min',
+        category: 'Mexicaans',
+        ingredients: [
+            '4 tortilla wraps', '400g kipfilet', '2 avocado\'s', '1 limoen',
+            '2 tomaten', '1 rode ui', 'IJsbergsla', 'Cr\u00e8me fra\u00eeche',
+            'Paprikapoeder', 'Komijnpoeder', 'Zout en peper'
+        ]
+    },
+    {
+        id: 'r7',
+        name: 'Pannenkoeken',
+        emoji: '\u{1F95E}',
+        servings: 4,
+        time: '30 min',
+        category: 'Nederlands',
+        ingredients: [
+            '300g bloem', '3 eieren', '500ml melk', 'Snufje zout',
+            'Boter (voor het bakken)', 'Poedersuiker', 'Stroop',
+            'Spek (optioneel)', 'Kaas (optioneel)'
+        ]
+    },
+    {
+        id: 'r8',
+        name: 'Caesar Salade',
+        emoji: '\u{1F957}',
+        servings: 4,
+        time: '20 min',
+        category: 'Salades',
+        ingredients: [
+            '2 kroppen romaine sla', '300g kipfilet', '100g Parmezaanse kaas',
+            '4 sneetjes brood (voor croutons)', '1 teentje knoflook',
+            '4 el olijfolie', '2 el citroensap', '1 el Dijon mosterd',
+            '2 ansjovisfilets', 'Zout en peper'
+        ]
+    },
+    {
+        id: 'r9',
+        name: 'Chili con Carne',
+        emoji: '\u{1F336}\uFE0F',
+        servings: 4,
+        time: '45 min',
+        category: 'Mexicaans',
+        ingredients: [
+            '500g rundergehakt', '1 blik kidneybonen (400g)', '1 blik gepelde tomaten (400g)',
+            '2 uien', '2 paprika\'s (rood)', '3 teentjes knoflook',
+            '2 el tomatenpuree', 'Komijnpoeder', 'Chilipoeder', 'Paprikapoeder',
+            'Rijst', 'Zure room', 'Zout en peper'
+        ]
+    },
+    {
+        id: 'r10',
+        name: 'Macaroni met Kaassaus',
+        emoji: '\u{1F9C0}',
+        servings: 4,
+        time: '25 min',
+        category: 'Italiaans',
+        ingredients: [
+            '400g macaroni', '200g geraspte kaas', '500ml melk',
+            '40g boter', '3 el bloem', 'Nootmuskaat', 'Zout en peper',
+            'Ham (optioneel)', 'Broccoli (optioneel)'
+        ]
+    }
+];
+
+// ============ STATE ============
+let shoppingList = JSON.parse(localStorage.getItem('lidl_list') || '[]');
+let recipes = JSON.parse(localStorage.getItem('lidl_recipes') || 'null') || [...DEFAULT_RECIPES];
+let activeTab = 'list';
+let activeCategory = 'Alles';
+let acSelectedIndex = -1;
+let acResults = [];
+let firebaseDB = null;
+let householdCode = localStorage.getItem('lidl_household') || null;
+let syncEnabled = false;
+
+// ============ INIT ============
+function init() {
+    if (!localStorage.getItem('lidl_recipes')) {
+        localStorage.setItem('lidl_recipes', JSON.stringify(recipes));
+    }
+    renderShoppingList();
+    renderRecipes();
+    renderCategoryFilter();
+    updateItemCount();
+    initFirebase();
+    loadGeminiKeyUI();
+
+    // Close autocomplete on outside click
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.add-item-bar')) {
+            hideAutocomplete();
+        }
+    });
+}
+
+// ============ TABS ============
+function switchTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    document.getElementById('page-' + tab).classList.add('active');
+    // Scroll to top on tab switch (iPhone friendly)
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ============ AUTOCOMPLETE ============
+function onSearchInput() {
+    const input = document.getElementById('newItemInput');
+    const query = input.value.trim().toLowerCase();
+
+    if (query.length < 2) {
+        hideAutocomplete();
+        return;
+    }
+
+    acResults = LIDL_PRODUCTS.filter(p => {
+        const nameMatch = p.name.toLowerCase().includes(query);
+        const kwMatch = p.kw.some(kw => kw.includes(query));
+        return nameMatch || kwMatch;
+    }).slice(0, 8);
+
+    acSelectedIndex = -1;
+    renderAutocomplete(query);
+}
+
+function renderAutocomplete(query) {
+    const dropdown = document.getElementById('autocompleteDropdown');
+
+    if (acResults.length === 0 && query.length >= 2) {
+        dropdown.innerHTML = `
+            <div class="autocomplete-item" onclick="addItemFromInput()">
+                <span class="ac-manual">Voeg "${escapeHtml(query)}" handmatig toe</span>
+            </div>
+        `;
+        dropdown.classList.add('show');
+        return;
+    }
+
+    if (acResults.length === 0) {
+        hideAutocomplete();
+        return;
+    }
+
+    const inputVal = document.getElementById('newItemInput').value.trim();
+    let html = acResults.map((p, i) => {
+        const highlighted = highlightMatch(p.name, inputVal);
+        const emoji = LIDL_CATEGORIES[p.cat] || '\u{1F4E6}';
+        return `
+            <div class="autocomplete-item ${i === acSelectedIndex ? 'selected' : ''}"
+                 onclick="selectAutocomplete(${i})">
+                <span class="ac-name">${highlighted}</span>
+                <span class="ac-cat-badge">${emoji} ${p.cat}</span>
+            </div>
+        `;
+    }).join('');
+
+    html += `
+        <div class="autocomplete-item ${acResults.length === acSelectedIndex ? 'selected' : ''}"
+             onclick="addItemFromInput()">
+            <span class="ac-manual">Voeg "${escapeHtml(inputVal)}" handmatig toe</span>
+        </div>
+    `;
+
+    dropdown.innerHTML = html;
+    dropdown.classList.add('show');
+}
+
+function highlightMatch(name, query) {
+    const escaped = escapeHtml(name);
+    const idx = escaped.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return escaped;
+    return escaped.substring(0, idx) + '<strong>' + escaped.substring(idx, idx + query.length) + '</strong>' + escaped.substring(idx + query.length);
+}
+
+function selectAutocomplete(index) {
+    const product = acResults[index];
+    if (!product) return;
+
+    addItem(product.name, product.cat);
+    document.getElementById('newItemInput').value = '';
+    hideAutocomplete();
+    showToast(product.name + ' toegevoegd');
+}
+
+function onSearchKeydown(e) {
+    const totalItems = acResults.length + 1; // +1 for manual option
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        acSelectedIndex = Math.min(acSelectedIndex + 1, totalItems - 1);
+        renderAutocomplete(document.getElementById('newItemInput').value);
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        acSelectedIndex = Math.max(acSelectedIndex - 1, -1);
+        renderAutocomplete(document.getElementById('newItemInput').value);
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (acSelectedIndex >= 0 && acSelectedIndex < acResults.length) {
+            selectAutocomplete(acSelectedIndex);
+        } else {
+            addItemFromInput();
+        }
+    } else if (e.key === 'Escape') {
+        hideAutocomplete();
+    }
+}
+
+function hideAutocomplete() {
+    document.getElementById('autocompleteDropdown').classList.remove('show');
+    acSelectedIndex = -1;
+}
+
+function addItemFromInput() {
+    const input = document.getElementById('newItemInput');
+    const val = input.value.trim();
+    if (!val) return;
+
+    // Check if there's a matching product
+    const match = LIDL_PRODUCTS.find(p =>
+        p.name.toLowerCase() === val.toLowerCase() ||
+        p.kw.some(kw => kw === val.toLowerCase())
+    );
+
+    if (match) {
+        addItem(match.name, match.cat);
+    } else {
+        addItem(val);
+    }
+
+    input.value = '';
+    hideAutocomplete();
+}
+
+// ============ SHOPPING LIST ============
+function addItem(name, category) {
+    const itemName = name;
+    if (!itemName) return;
+
+    const existing = shoppingList.find(i => i.name.toLowerCase() === itemName.toLowerCase() && !i.checked);
+    if (existing) {
+        existing.quantity = (existing.quantity || 1) + 1;
+    } else {
+        shoppingList.push({
+            id: Date.now() + Math.random(),
+            name: itemName,
+            category: category || guessCategory(itemName),
+            checked: false,
+            quantity: 1
+        });
+    }
+
+    saveList();
+    renderShoppingList();
+    updateItemCount();
+}
+
+function guessCategory(name) {
+    const n = name.toLowerCase();
+
+    // First try matching against LIDL_PRODUCTS
+    const product = LIDL_PRODUCTS.find(p =>
+        p.name.toLowerCase().includes(n) || p.kw.some(kw => n.includes(kw))
+    );
+    if (product) return product.cat;
+
+    const mapping = {
+        'Groente & Fruit': ['ui', 'knoflook', 'tomaat', 'tomaten', 'wortel', 'paprika', 'sla', 'komkommer', 'avocado', 'limoen', 'citroen', 'aardappel', 'boerenkool', 'broccoli', 'ijsbergsla', 'romaine', 'basilicum', 'groente', 'champignon', 'courgette', 'prei', 'bloemkool', 'spinazie', 'sperziebonen', 'mango', 'ananas', 'banaan', 'appel', 'peer', 'druiven', 'aardbei'],
+        'Vlees & Vis': ['gehakt', 'kip', 'kipfilet', 'rookworst', 'spek', 'ansjovis', 'vlees', 'ham', 'chorizo', 'salami', 'worst', 'zalm', 'garnaal', 'tonijn', 'vis', 'filet americain', 'draadjesvlees', 'spareribs', 'schnitzels'],
+        'Zuivel & Eieren': ['melk', 'boter', 'kaas', 'eieren', 'ei', 'yoghurt', 'room', 'kookroom', 'cr\u00e8me', 'zure room', 'parmezaan', 'kwark', 'vla', 'milbona', 'mozzarella', 'mascarpone', 'ricotta', 'cr\u00e8me fra\u00eeche'],
+        'Brood & Bakkerij': ['brood', 'pita', 'tortilla', 'wrap', 'bloem', 'crouton', 'stokbrood', 'croissant', 'beschuit', 'knackebrod', 'bagel'],
+        'Dranken': ['water', 'sap', 'cola', 'bier', 'wijn', 'limonade', 'koffie', 'thee', 'freeway', 'solevita', 'cimarosa', 'kordaat', 'energy', 'tonic', 'rivella', 'chocomel'],
+        'Pasta, Rijst & Granen': ['spaghetti', 'pasta', 'rijst', 'macaroni', 'noodle', 'couscous', 'combino', 'penne', 'fusilli', 'tagliatelle', 'lasagne', 'jasminrijst', 'basmati', 'risotto', 'bulgur', 'quinoa', 'havermout', 'muesli', 'cornflakes'],
+        'Conserven & Sauzen': ['blik', 'gepelde tomaten', 'tomatenpuree', 'sojasaus', 'ketjap', 'sambal', 'mosterd', 'stroop', 'olijfolie', 'zonnebloemolie', 'bouillon', 'kidneybonen', 'atjar', 'pesto', 'curry', 'honing', 'jam', 'pindakaas', 'hagelslag', 'nutella', 'mayonaise', 'ketchup'],
+        'Kruiden & Specerijen': ['kruiden', 'zout', 'peper', 'paprikapoeder', 'komijn', 'chili', 'nootmuskaat', 'gyros kruiden', 'italiaanse kruiden', 'specerij', 'kaneelstok', 'kerrie', 'kurkuma', 'oregano', 'tijm', 'rozemarijn', 'laurier', 'bieslook'],
+        'Snacks & Snoep': ['kroepoek', 'chips', 'koek', 'chocola', 'snoep', 'poedersuiker', 'sondey', 'sugarland', 'noten', 'borrelnoten', 'gummy', 'drop', 'wafel', 'gevulde koek'],
+        'Diepvries': ['diepvries', 'pizza', 'ijsje', 'ijs', 'groentenmix', 'friet', 'frites', 'aardappelpuree'],
+        'Huishouden': ['w5', 'formil', 'schoonmaak', 'vaatwas', 'wasmiddel', 'allesreiniger', 'toiletpapier', 'keukenpapier', 'vuilniszak', 'afwasmiddel', 'wasverzachter'],
+        'Persoonlijke Verzorging': ['cien', 'shampoo', 'douchegel', 'tandpasta', 'deodorant', 'zeep', 'bodylotion', 'scheermesje', 'maandverband', 'tissues'],
+        'Baby & Kind': ['lupilu', 'luier', 'babydoekje', 'flesvoeding', 'babyvoeding'],
+        'Diervoeding': ['orlando', 'coshida', 'hondenvoer', 'kattenvoer', 'diervoeding', 'kattenbak']
+    };
+
+    for (const [cat, keywords] of Object.entries(mapping)) {
+        if (keywords.some(kw => n.includes(kw))) return cat;
+    }
+    return 'Overig';
+}
+
+function toggleCheck(id) {
+    const item = shoppingList.find(i => i.id === id);
+    if (item) {
+        item.checked = !item.checked;
+        saveList();
+        renderShoppingList();
+        updateItemCount();
+    }
+}
+
+function deleteItem(id) {
+    shoppingList = shoppingList.filter(i => i.id !== id);
+    saveList();
+    renderShoppingList();
+    updateItemCount();
+}
+
+function changeQuantity(id, delta) {
+    const item = shoppingList.find(i => i.id === id);
+    if (item) {
+        item.quantity = Math.max(1, (item.quantity || 1) + delta);
+        saveList();
+        renderShoppingList();
+    }
+}
+
+function clearChecked() {
+    shoppingList = shoppingList.filter(i => !i.checked);
+    saveList();
+    renderShoppingList();
+    updateItemCount();
+    showToast('Afgevinkte items verwijderd');
+}
+
+function renderShoppingList() {
+    const container = document.getElementById('shoppingList');
+    const emptyState = document.getElementById('emptyState');
+
+    if (shoppingList.length === 0) {
+        container.innerHTML = '';
+        emptyState.style.display = 'block';
+        return;
+    }
+
+    emptyState.style.display = 'none';
+
+    const unchecked = shoppingList.filter(i => !i.checked);
+    const checked = shoppingList.filter(i => i.checked);
+
+    const grouped = {};
+    unchecked.forEach(item => {
+        const cat = item.category || 'Overig';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(item);
+    });
+
+    const catOrder = Object.keys(LIDL_CATEGORIES);
+    const sortedCats = Object.keys(grouped).sort((a, b) => catOrder.indexOf(a) - catOrder.indexOf(b));
+
+    let html = '';
+
+    sortedCats.forEach(cat => {
+        const emoji = LIDL_CATEGORIES[cat] || '\u{1F4E6}';
+        html += `
+            <div class="list-section">
+                <div class="section-header">
+                    <span class="section-title">${emoji} ${cat}</span>
+                    <span class="section-count">${grouped[cat].length}</span>
+                </div>
+                ${grouped[cat].map(item => renderListItem(item, false)).join('')}
+            </div>
+        `;
+    });
+
+    if (checked.length > 0) {
+        html += `
+            <div class="list-section">
+                <div class="section-header">
+                    <span class="section-title">\u2705 Afgevinkt</span>
+                    <span class="section-count">${checked.length}</span>
+                </div>
+                ${checked.map(item => renderListItem(item, true)).join('')}
+                <button class="clear-checked-btn" onclick="clearChecked()">
+                    Verwijder afgevinkte items
+                </button>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+function renderListItem(item, isChecked) {
+    return `
+        <div class="list-item ${isChecked ? 'checked' : ''}">
+            <div class="checkbox ${isChecked ? 'checked' : ''}" onclick="toggleCheck(${item.id})"></div>
+            <div class="item-info">
+                <div class="item-name">${escapeHtml(item.name)}</div>
+                <div class="lidl-aisle-info">${LIDL_CATEGORIES[item.category] || '\u{1F4E6}'} ${item.category || 'Overig'}</div>
+            </div>
+            ${!isChecked ? `
+                <div class="quantity-controls">
+                    <button class="qty-btn" onclick="changeQuantity(${item.id}, -1)" aria-label="Verminder">-</button>
+                    <span class="qty-value">${item.quantity || 1}</span>
+                    <button class="qty-btn" onclick="changeQuantity(${item.id}, 1)" aria-label="Verhoog">+</button>
+                </div>
+            ` : ''}
+            <button class="item-delete" onclick="deleteItem(${item.id})" aria-label="Verwijder">\u2715</button>
+        </div>
+    `;
+}
+
+function updateItemCount() {
+    const count = shoppingList.filter(i => !i.checked).length;
+    document.getElementById('itemCount').textContent = count + ' item' + (count !== 1 ? 's' : '');
+}
+
+function saveList() {
+    localStorage.setItem('lidl_list', JSON.stringify(shoppingList));
+    syncToFirebase();
+}
+
+// ============ RECIPES ============
+function renderCategoryFilter() {
+    const categories = ['Alles', ...new Set(recipes.map(r => r.category))];
+    const container = document.getElementById('categoryFilter');
+    container.innerHTML = categories.map(cat => `
+        <button class="filter-chip ${cat === activeCategory ? 'active' : ''}"
+                onclick="filterCategory('${cat}')">
+            ${cat}
+        </button>
+    `).join('');
+}
+
+function filterCategory(cat) {
+    activeCategory = cat;
+    renderCategoryFilter();
+    renderRecipes();
+}
+
+function renderRecipes() {
+    const container = document.getElementById('recipeList');
+    const filtered = activeCategory === 'Alles'
+        ? recipes
+        : recipes.filter(r => r.category === activeCategory);
+
+    container.innerHTML = filtered.map(recipe => `
+        <div class="recipe-card" id="recipe-${recipe.id}">
+            <div class="recipe-header" onclick="toggleRecipe('${recipe.id}')">
+                <div class="recipe-emoji">${recipe.emoji}</div>
+                <div class="recipe-info">
+                    <div class="recipe-name">${escapeHtml(recipe.name)}</div>
+                    <div class="recipe-meta">${recipe.servings} personen \u00B7 ${recipe.time}</div>
+                </div>
+                <button class="recipe-add-btn" onclick="event.stopPropagation(); addRecipeToList('${recipe.id}')">
+                    + Lijst
+                </button>
+            </div>
+            <div class="recipe-details" id="details-${recipe.id}">
+                <h4>Ingredi\u00EBnten (${recipe.servings} personen)</h4>
+                <ul class="ingredient-list">
+                    ${recipe.ingredients.map(ing => `<li>${escapeHtml(ing)}</li>`).join('')}
+                </ul>
+                <div class="recipe-actions">
+                    <button class="recipe-action-btn primary" onclick="addRecipeToList('${recipe.id}')">
+                        \u{1F6D2} Alles toevoegen aan lijst
+                    </button>
+                    ${!recipe.isDefault ? `
+                        <button class="recipe-action-btn danger" onclick="deleteRecipe('${recipe.id}')">
+                            \u{1F5D1}\uFE0F
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function toggleRecipe(id) {
+    const details = document.getElementById('details-' + id);
+    details.classList.toggle('open');
+}
+
+function addRecipeToList(id) {
+    const recipe = recipes.find(r => r.id === id);
+    if (!recipe) return;
+
+    recipe.ingredients.forEach(ing => {
+        addItem(ing);
+    });
+
+    const btn = event?.target;
+    if (btn && btn.classList.contains('recipe-add-btn')) {
+        btn.textContent = '\u2713 Toegevoegd';
+        btn.classList.add('added');
+        setTimeout(() => {
+            btn.textContent = '+ Lijst';
+            btn.classList.remove('added');
+        }, 2000);
+    }
+
+    showToast(`${recipe.emoji} ${recipe.name} toegevoegd aan lijst`);
+    document.querySelector('.tab').click();
+}
+
+function deleteRecipe(id) {
+    if (!confirm('Weet je zeker dat je dit recept wilt verwijderen?')) return;
+    recipes = recipes.filter(r => r.id !== id);
+    localStorage.setItem('lidl_recipes', JSON.stringify(recipes));
+    syncToFirebase();
+    renderRecipes();
+    renderCategoryFilter();
+    showToast('Recept verwijderd');
+}
+
+// ============ ADD RECIPE FORM ============
+function toggleRecipeForm() {
+    const form = document.getElementById('recipeForm');
+    const btn = document.getElementById('toggleFormBtn');
+    const isVisible = form.style.display !== 'none';
+    form.style.display = isVisible ? 'none' : 'block';
+    btn.style.display = isVisible ? 'block' : 'none';
+    if (!isVisible) {
+        document.getElementById('recipeName').focus();
+    }
+}
+
+function saveRecipe() {
+    const name = document.getElementById('recipeName').value.trim();
+    const emoji = document.getElementById('recipeEmoji').value.trim() || '\u{1F37D}\uFE0F';
+    const servings = parseInt(document.getElementById('recipeServings').value) || 4;
+    const time = document.getElementById('recipeTime').value.trim() || '30 min';
+    const ingredientsText = document.getElementById('recipeIngredients').value.trim();
+
+    if (!name) { showToast('Vul een naam in voor het recept'); return; }
+    if (!ingredientsText) { showToast('Vul ingredi\u00EBnten in'); return; }
+
+    const ingredients = ingredientsText.split('\n').map(l => l.trim()).filter(l => l);
+
+    const recipe = {
+        id: 'r_' + Date.now(),
+        name, emoji, servings, time,
+        category: 'Eigen recepten',
+        ingredients
+    };
+
+    recipes.unshift(recipe);
+    localStorage.setItem('lidl_recipes', JSON.stringify(recipes));
+    syncToFirebase();
+
+    document.getElementById('recipeName').value = '';
+    document.getElementById('recipeEmoji').value = '';
+    document.getElementById('recipeServings').value = '4';
+    document.getElementById('recipeTime').value = '';
+    document.getElementById('recipeIngredients').value = '';
+    toggleRecipeForm();
+
+    renderRecipes();
+    renderCategoryFilter();
+    showToast(`${emoji} ${name} opgeslagen!`);
+}
+
+// ============ FIREBASE SYNC ============
+const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyBlR8Qi9fDslI8Kks5a6zkqDO26_2mL0C8",
+    authDomain: "lidl-boodschappen.firebaseapp.com",
+    databaseURL: "https://lidl-boodschappen-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "lidl-boodschappen",
+    storageBucket: "lidl-boodschappen.firebasestorage.app",
+    messagingSenderId: "389661463002",
+    appId: "1:389661463002:web:af30c548195a281f3870e3",
+    measurementId: "G-1SLXV09GK5"
+};
+
+function initFirebase() {
+    try {
+        if (!firebase.apps.length) {
+            firebase.initializeApp(FIREBASE_CONFIG);
+        }
+        firebaseDB = firebase.database();
+        if (householdCode) {
+            connectToHousehold(householdCode);
+        }
+        updateSyncUI();
+    } catch (e) {
+        console.error('Firebase init error:', e);
+        updateSyncUI();
+    }
+}
+
+function generateCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    return code;
+}
+
+function createHousehold() {
+    if (!firebaseDB) {
+        showToast('Firebase niet beschikbaar. Herlaad de app.');
+        return;
+    }
+
+    const code = generateCode();
+    const ref = firebaseDB.ref('households/' + code);
+    ref.set({
+        created: Date.now(),
+        shoppingList: shoppingList,
+        recipes: recipes
+    }).then(() => {
+        householdCode = code;
+        localStorage.setItem('lidl_household', code);
+        connectToHousehold(code);
+        showToast('Huishouden aangemaakt: ' + code);
+    }).catch(e => {
+        showToast('Fout: ' + e.message);
+    });
+}
+
+function joinHousehold() {
+    if (!firebaseDB) {
+        showToast('Firebase niet beschikbaar. Herlaad de app.');
+        return;
+    }
+
+    const code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
+    if (code.length !== 6) {
+        showToast('Voer een geldige 6-letter code in');
+        return;
+    }
+
+    const ref = firebaseDB.ref('households/' + code);
+    ref.once('value').then(snap => {
+        if (!snap.exists()) {
+            showToast('Huishouden niet gevonden');
+            return;
+        }
+        householdCode = code;
+        localStorage.setItem('lidl_household', code);
+
+        const data = snap.val();
+        if (data.shoppingList) {
+            shoppingList = Array.isArray(data.shoppingList) ? data.shoppingList : Object.values(data.shoppingList);
+            localStorage.setItem('lidl_list', JSON.stringify(shoppingList));
+            renderShoppingList();
+            updateItemCount();
+        }
+        if (data.recipes) {
+            recipes = Array.isArray(data.recipes) ? data.recipes : Object.values(data.recipes);
+            localStorage.setItem('lidl_recipes', JSON.stringify(recipes));
+            renderRecipes();
+            renderCategoryFilter();
+        }
+
+        connectToHousehold(code);
+        showToast('Verbonden met huishouden ' + code);
+    }).catch(e => {
+        showToast('Fout: ' + e.message);
+    });
+}
+
+function connectToHousehold(code) {
+    if (!firebaseDB) return;
+
+    syncEnabled = true;
+    const ref = firebaseDB.ref('households/' + code);
+
+    ref.child('shoppingList').on('value', snap => {
+        if (!snap.exists()) return;
+        const data = snap.val();
+        const newList = Array.isArray(data) ? data : Object.values(data || {});
+        if (JSON.stringify(newList) !== JSON.stringify(shoppingList)) {
+            shoppingList = newList;
+            localStorage.setItem('lidl_list', JSON.stringify(shoppingList));
+            renderShoppingList();
+            updateItemCount();
+        }
+    });
+
+    ref.child('recipes').on('value', snap => {
+        if (!snap.exists()) return;
+        const data = snap.val();
+        const newRecipes = Array.isArray(data) ? data : Object.values(data || {});
+        if (JSON.stringify(newRecipes) !== JSON.stringify(recipes)) {
+            recipes = newRecipes;
+            localStorage.setItem('lidl_recipes', JSON.stringify(recipes));
+            renderRecipes();
+            renderCategoryFilter();
+        }
+    });
+
+    updateSyncUI();
+    setSyncIndicator('connected');
+}
+
+function disconnectHousehold() {
+    if (!confirm('Weet je zeker dat je de verbinding wilt verbreken? Je lokale data blijft bewaard.')) return;
+
+    if (firebaseDB && householdCode) {
+        firebaseDB.ref('households/' + householdCode).off();
+    }
+    householdCode = null;
+    syncEnabled = false;
+    localStorage.removeItem('lidl_household');
+    updateSyncUI();
+    setSyncIndicator('offline');
+    showToast('Verbinding verbroken');
+}
+
+function syncToFirebase() {
+    if (!firebaseDB || !householdCode || !syncEnabled) return;
+
+    setSyncIndicator('syncing');
+    const ref = firebaseDB.ref('households/' + householdCode);
+    ref.update({
+        shoppingList: shoppingList,
+        recipes: recipes,
+        lastUpdated: Date.now()
+    }).then(() => {
+        setSyncIndicator('connected');
+    }).catch(() => {
+        setSyncIndicator('error');
+    });
+}
+
+function setSyncIndicator(state) {
+    const el = document.getElementById('syncIndicator');
+    el.className = 'sync-indicator ' + state;
+    const titles = {
+        connected: 'Verbonden',
+        syncing: 'Synchroniseren...',
+        error: 'Sync fout',
+        offline: 'Niet verbonden'
+    };
+    el.title = titles[state] || 'Niet verbonden';
+}
+
+function updateSyncUI() {
+    const notConnected = document.getElementById('syncNotConnected');
+    const connected = document.getElementById('syncConnected');
+    const codeDisplay = document.getElementById('currentSyncCode');
+
+    if (householdCode && syncEnabled) {
+        notConnected.style.display = 'none';
+        connected.style.display = 'block';
+        codeDisplay.textContent = householdCode;
+    } else {
+        notConnected.style.display = 'block';
+        connected.style.display = 'none';
+    }
+
+    // Update catalog info
+    const versionEl = document.getElementById('catalogVersion');
+    const countEl = document.getElementById('catalogCount');
+    if (versionEl) versionEl.textContent = CATALOG_VERSION;
+    if (countEl) countEl.textContent = LIDL_PRODUCTS.length;
+
+    // Update Firebase status
+    const fbStatus = document.getElementById('firebaseStatusInfo');
+    if (fbStatus) {
+        if (firebaseDB) {
+            fbStatus.textContent = '\u2705 Firebase is automatisch verbonden';
+            fbStatus.style.background = '#d1fae5';
+            fbStatus.style.color = '#065f46';
+        } else {
+            fbStatus.textContent = '\u26A0\uFE0F Firebase kon niet verbinden. Herlaad de app.';
+            fbStatus.style.background = '#fef3c7';
+            fbStatus.style.color = '#92400e';
+        }
+    }
+}
+
+function copySyncCode() {
+    if (!householdCode) return;
+    navigator.clipboard.writeText(householdCode).then(() => {
+        showToast('Code gekopieerd: ' + householdCode);
+    }).catch(() => {
+        showToast('Code: ' + householdCode);
+    });
+}
+
+// ============ COPY & SHARE LIST ============
+function getListAsText() {
+    const unchecked = shoppingList.filter(i => !i.checked);
+    if (unchecked.length === 0) return '';
+
+    // Group by category
+    const grouped = {};
+    unchecked.forEach(item => {
+        const cat = item.category || 'Overig';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(item);
+    });
+
+    const catOrder = Object.keys(LIDL_CATEGORIES);
+    const sortedCats = Object.keys(grouped).sort((a, b) => catOrder.indexOf(a) - catOrder.indexOf(b));
+
+    let text = '\u{1F6D2} Boodschappenlijst\n';
+    text += '━━━━━━━━━━━━━━━━━━\n';
+
+    sortedCats.forEach(cat => {
+        const emoji = LIDL_CATEGORIES[cat] || '\u{1F4E6}';
+        text += '\n' + emoji + ' ' + cat + '\n';
+        grouped[cat].forEach(item => {
+            const qty = item.quantity > 1 ? item.quantity + 'x ' : '';
+            text += '  \u25CB ' + qty + item.name + '\n';
+        });
+    });
+
+    text += '\n' + unchecked.length + ' artikel' + (unchecked.length === 1 ? '' : 'en');
+    return text;
+}
+
+function copyListToClipboard() {
+    const unchecked = shoppingList.filter(i => !i.checked);
+    if (unchecked.length === 0) {
+        showToast('Je lijst is leeg');
+        return;
+    }
+
+    const text = getListAsText();
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('\u{2705} Lijst gekopieerd! Plak in AH/Picnic app');
+    }).catch(() => {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('\u{2705} Lijst gekopieerd!');
+    });
+}
+
+function shareList() {
+    const unchecked = shoppingList.filter(i => !i.checked);
+    if (unchecked.length === 0) {
+        showToast('Je lijst is leeg');
+        return;
+    }
+
+    const text = getListAsText();
+
+    if (navigator.share) {
+        navigator.share({
+            title: 'Boodschappenlijst',
+            text: text
+        }).catch(() => {});
+    } else {
+        // Fallback: copy to clipboard
+        copyListToClipboard();
+    }
+}
+
+// ============ FRIDGE SCAN ============
+let fridgeImageBase64 = null;
+let fridgeImageType = null;
+
+function openFridgeModal() {
+    const key = localStorage.getItem('lidl_gemini_key');
+    if (!key) {
+        showToast('Stel eerst een Gemini API key in via Sync tab');
+        return;
+    }
+    document.getElementById('fridgeModalOverlay').classList.add('active');
+    resetFridge();
+}
+
+function closeFridgeModal() {
+    document.getElementById('fridgeModalOverlay').classList.remove('active');
+    resetFridge();
+}
+
+function resetFridge() {
+    fridgeImageBase64 = null;
+    fridgeImageType = null;
+    const preview = document.getElementById('fridgePreview');
+    const uploadArea = document.getElementById('fridgeUploadArea');
+
+    preview.classList.remove('visible');
+    preview.src = '';
+    uploadArea.classList.remove('has-image');
+    document.getElementById('fridgeUploadIcon').style.display = '';
+    document.getElementById('fridgeUploadText').style.display = '';
+    uploadArea.querySelector('.scan-upload-hint').style.display = '';
+
+    document.getElementById('fridgeScanBtn').disabled = true;
+    document.getElementById('fridgeActions').style.display = '';
+    document.getElementById('fridgeSpinner').classList.remove('active');
+    document.getElementById('fridgeResult').classList.remove('active');
+    document.getElementById('fridgeError').classList.remove('active');
+    document.getElementById('fridgeFileInput').value = '';
+}
+
+function onFridgePhotoSelected(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+        showToast('Selecteer een afbeelding');
+        return;
+    }
+
+    compressImage(file, 1024, 0.7).then(result => {
+        fridgeImageBase64 = result.base64;
+        fridgeImageType = result.mimeType;
+
+        const preview = document.getElementById('fridgePreview');
+        const uploadArea = document.getElementById('fridgeUploadArea');
+        preview.src = result.dataUrl;
+        preview.classList.add('visible');
+        uploadArea.classList.add('has-image');
+
+        document.getElementById('fridgeUploadIcon').style.display = 'none';
+        document.getElementById('fridgeUploadText').style.display = 'none';
+        uploadArea.querySelector('.scan-upload-hint').style.display = 'none';
+
+        document.getElementById('fridgeScanBtn').disabled = false;
+    });
+}
+
+async function scanFridge() {
+    const key = localStorage.getItem('lidl_gemini_key');
+    if (!key || !fridgeImageBase64) return;
+
+    document.getElementById('fridgeActions').style.display = 'none';
+    document.getElementById('fridgeSpinner').classList.add('active');
+    document.getElementById('fridgeError').classList.remove('active');
+
+    // Build context: what's already on the list
+    const existingItems = shoppingList.filter(i => !i.checked).map(i => i.name);
+    const existingContext = existingItems.length > 0
+        ? '\n\nDeze producten staan AL op de boodschappenlijst (niet opnieuw voorstellen): ' + existingItems.join(', ')
+        : '';
+
+    const prompt = `Je bent een slimme keukenassistent. Analyseer deze foto van een koelkast, voorraadkast of vriezer.
+
+Kijk goed naar:
+1. Wat er aanwezig is en bijna op lijkt (weinig over)
+2. Wat er helemaal mist (veelvoorkomende basisproducten die er niet staan)
+3. Producten die over de datum zouden kunnen zijn
+
+Geef het resultaat als JSON:
+{
+  "summary": "Korte samenvatting van wat je ziet (1-2 zinnen, Nederlands)",
+  "items": [
+    {"name": "productnaam", "reason": "korte reden"},
+    {"name": "productnaam", "reason": "korte reden"}
+  ]
+}
+
+Regels:
+- Gebruik Nederlandse productnamen die bij de Lidl verkrijgbaar zijn
+- Geef 5-15 producten die aangevuld moeten worden
+- Gebruik korte, praktische redenen (bijv. "bijna op", "niet gezien", "basisproduct ontbreekt")
+- Focus op verse producten, zuivel, groente/fruit, en basisvoeding
+- Geef ALLEEN het JSON object terug, geen andere tekst of markdown${existingContext}`;
+
+    const models = ['gemini-2.5-flash', 'gemini-2.0-flash-lite'];
+    let lastError = null;
+
+    for (const model of models) {
+        try {
+            document.getElementById('fridgeSpinner').querySelector('.spinner-text').textContent =
+                model === models[0] ? 'Koelkast analyseren met AI...' : 'Opnieuw proberen met ander model...';
+
+            const data = await callGeminiAPI(key, model, prompt, fridgeImageBase64, fridgeImageType);
+
+            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) throw new Error('Geen antwoord ontvangen');
+
+            let jsonStr = text.trim();
+            if (jsonStr.startsWith('```')) {
+                jsonStr = jsonStr.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+            }
+
+            const result = JSON.parse(jsonStr);
+            if (result.error) throw new Error(result.error);
+            if (!result.items || !Array.isArray(result.items)) throw new Error('Onvolledig antwoord');
+
+            // Show summary
+            document.getElementById('fridgeSummary').textContent = result.summary || 'Analyse compleet.';
+
+            // Build checklist
+            const listEl = document.getElementById('fridgeResultList');
+            listEl.innerHTML = result.items.map((item, i) => `
+                <li class="fridge-result-item">
+                    <input type="checkbox" class="fridge-cb" id="fridge-item-${i}" checked
+                           data-name="${item.name.replace(/"/g, '&quot;')}">
+                    <label for="fridge-item-${i}">
+                        <strong>${item.name}</strong>
+                        <span style="color:var(--text-light); font-size:12px;"> \u2014 ${item.reason}</span>
+                    </label>
+                </li>
+            `).join('');
+
+            document.getElementById('fridgeSpinner').classList.remove('active');
+            document.getElementById('fridgeResult').classList.add('active');
+            return;
+
+        } catch (e) {
+            console.warn('Fridge scan ' + model + ' failed:', e.message);
+            lastError = e;
+            if (e.status && e.status !== 429 && e.status !== 503 && e.status !== 500) break;
+            if (model !== models[models.length - 1]) {
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
+    }
+
+    // All failed
+    document.getElementById('fridgeSpinner').classList.remove('active');
+    document.getElementById('fridgeActions').style.display = '';
+
+    const errorEl = document.getElementById('fridgeError');
+    let errorMsg = 'Fout bij analyseren: ' + lastError.message;
+    if (lastError.message && lastError.message.includes('API key not valid')) {
+        errorMsg = 'API key niet geldig. Controleer je Gemini key in de Sync tab.';
+    } else if (lastError.status === 429) {
+        errorMsg = 'API limiet bereikt. Wacht een minuut en probeer opnieuw.';
+    }
+    errorEl.textContent = errorMsg;
+    errorEl.classList.add('active');
+}
+
+function addFridgeItems() {
+    const checkboxes = document.querySelectorAll('.fridge-cb:checked');
+    let count = 0;
+    checkboxes.forEach(cb => {
+        const name = cb.dataset.name;
+        if (name) {
+            addItem(name);
+            count++;
+        }
+    });
+    closeFridgeModal();
+    if (count > 0) {
+        showToast('\u{1F6D2} ' + count + ' product' + (count === 1 ? '' : 'en') + ' toegevoegd!');
+    }
+}
+
+// ============ EMOJI PICKER ============
+function pickEmoji(el) {
+    // Remove selected from all
+    document.querySelectorAll('.emoji-option').forEach(e => e.classList.remove('selected'));
+    el.classList.add('selected');
+    document.getElementById('recipeEmoji').value = el.textContent.trim();
+}
+
+// ============ SCAN RECIPE (Gemini Vision) ============
+let scanImageBase64 = null;
+let scanImageType = null;
+
+function openScanModal() {
+    const key = localStorage.getItem('lidl_gemini_key');
+    if (!key) {
+        showToast('Stel eerst een Gemini API key in via Sync tab');
+        return;
+    }
+    document.getElementById('scanModalOverlay').classList.add('active');
+    resetScan();
+}
+
+function closeScanModal() {
+    document.getElementById('scanModalOverlay').classList.remove('active');
+    resetScan();
+}
+
+function resetScan() {
+    scanImageBase64 = null;
+    scanImageType = null;
+    const preview = document.getElementById('scanPreview');
+    const uploadArea = document.getElementById('scanUploadArea');
+    const uploadIcon = document.getElementById('scanUploadIcon');
+    const uploadText = document.getElementById('scanUploadText');
+
+    preview.classList.remove('visible');
+    preview.src = '';
+    uploadArea.classList.remove('has-image');
+    uploadIcon.style.display = '';
+    uploadText.style.display = '';
+    uploadArea.querySelector('.scan-upload-hint').style.display = '';
+
+    document.getElementById('scanBtn').disabled = true;
+    document.getElementById('scanActions').style.display = '';
+    document.getElementById('scanSpinner').classList.remove('active');
+    document.getElementById('scanResult').classList.remove('active');
+    document.getElementById('scanError').classList.remove('active');
+    document.getElementById('scanFileInput').value = '';
+}
+
+function compressImage(file, maxWidth, quality) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = function() {
+            URL.revokeObjectURL(url);
+            let w = img.width;
+            let h = img.height;
+            if (w > maxWidth) {
+                h = Math.round(h * maxWidth / w);
+                w = maxWidth;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            const dataUrl = canvas.toDataURL('image/jpeg', quality);
+            resolve({
+                dataUrl: dataUrl,
+                base64: dataUrl.split(',')[1],
+                mimeType: 'image/jpeg'
+            });
+        };
+        img.src = url;
+    });
+}
+
+function onPhotoSelected(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+        showToast('Selecteer een afbeelding');
+        return;
+    }
+
+    // Compress image to max 1024px wide, JPEG 0.7 quality
+    compressImage(file, 1024, 0.7).then(result => {
+        scanImageBase64 = result.base64;
+        scanImageType = result.mimeType;
+
+        // Show preview
+        const preview = document.getElementById('scanPreview');
+        const uploadArea = document.getElementById('scanUploadArea');
+        preview.src = result.dataUrl;
+        preview.classList.add('visible');
+        uploadArea.classList.add('has-image');
+
+        // Hide upload text
+        document.getElementById('scanUploadIcon').style.display = 'none';
+        document.getElementById('scanUploadText').style.display = 'none';
+        uploadArea.querySelector('.scan-upload-hint').style.display = 'none';
+
+        // Enable scan button
+        document.getElementById('scanBtn').disabled = false;
+
+        // Show compressed size
+        const sizeKB = Math.round(result.base64.length * 0.75 / 1024);
+        console.log('Compressed image size: ' + sizeKB + 'KB');
+    });
+}
+
+async function callGeminiAPI(key, model, prompt, imageBase64, imageType) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{
+                parts: [
+                    { text: prompt },
+                    { inline_data: { mime_type: imageType, data: imageBase64 } }
+                ]
+            }],
+            generationConfig: {
+                temperature: 0.1,
+                maxOutputTokens: 2048
+            }
+        })
+    });
+
+    if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        const errMsg = errData?.error?.message || `HTTP ${response.status}`;
+        const err = new Error(errMsg);
+        err.status = response.status;
+        throw err;
+    }
+
+    return await response.json();
+}
+
+async function scanRecipe() {
+    const key = localStorage.getItem('lidl_gemini_key');
+    if (!key) {
+        showToast('Stel eerst een Gemini API key in via Sync tab');
+        return;
+    }
+
+    if (!scanImageBase64) {
+        showToast('Selecteer eerst een foto');
+        return;
+    }
+
+    // Show spinner, hide actions
+    document.getElementById('scanActions').style.display = 'none';
+    document.getElementById('scanSpinner').classList.add('active');
+    document.getElementById('scanError').classList.remove('active');
+
+    const prompt = `Je bent een receptherkenner. Analyseer deze foto van een recept (dit kan een foto van een kookboek, receptkaart, verpakking, website of app zijn).
+
+Extraheer het recept en geef het resultaat als JSON in dit exacte formaat:
+{
+  "name": "receptnaam in het Nederlands",
+  "servings": 4,
+  "time": "30 min",
+  "ingredients": ["hoeveelheid + ingredi\u00ebnt 1", "hoeveelheid + ingredi\u00ebnt 2"]
+}
+
+Regels:
+- Gebruik Nederlandse productnamen
+- Gebruik gangbare hoeveelheden met eenheid (bijv. "500g kipfilet", "2 uien", "1 blik gepelde tomaten 400g", "3 el olijfolie")
+- Als het aantal personen niet duidelijk is, gebruik 4
+- Als de bereidingstijd niet duidelijk is, schat deze
+- Geef ALLEEN het JSON object terug, geen andere tekst of markdown
+- Als je geen recept kunt herkennen, geef dan: {"error": "Kon geen recept herkennen in deze foto"}`;
+
+    // Try models in order: gemini-2.5-flash (latest), then gemini-2.0-flash-lite as fallback
+    const models = ['gemini-2.5-flash', 'gemini-2.0-flash-lite'];
+    let lastError = null;
+
+    for (const model of models) {
+        try {
+            document.getElementById('scanSpinner').querySelector('.spinner-text').textContent =
+                model === models[0] ? 'Recept herkennen met AI...' : 'Opnieuw proberen met ander model...';
+
+            const data = await callGeminiAPI(key, model, prompt, scanImageBase64, scanImageType);
+
+            // Extract text from Gemini response
+            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) {
+                throw new Error('Geen antwoord ontvangen van Gemini');
+            }
+
+            // Parse JSON from response (handle markdown code blocks)
+            let jsonStr = text.trim();
+            if (jsonStr.startsWith('```')) {
+                jsonStr = jsonStr.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+            }
+
+            const recipe = JSON.parse(jsonStr);
+
+            if (recipe.error) {
+                throw new Error(recipe.error);
+            }
+
+            if (!recipe.name || !recipe.ingredients || !Array.isArray(recipe.ingredients)) {
+                throw new Error('Onvolledig recept ontvangen');
+            }
+
+            // Fill in result form
+            document.getElementById('scanResultName').value = recipe.name || '';
+            document.getElementById('scanResultServings').value = recipe.servings || 4;
+            document.getElementById('scanResultTime').value = recipe.time || '30 min';
+            document.getElementById('scanResultIngredients').value = (recipe.ingredients || []).join('\n');
+
+            // Show result, hide spinner
+            document.getElementById('scanSpinner').classList.remove('active');
+            document.getElementById('scanResult').classList.add('active');
+            return; // Success!
+
+        } catch (e) {
+            console.warn('Model ' + model + ' failed:', e.message);
+            lastError = e;
+            // If it's not a rate limit/server error, don't retry with other model
+            if (e.status && e.status !== 429 && e.status !== 503 && e.status !== 500) {
+                break;
+            }
+            // Wait 2 seconds before trying next model
+            if (model !== models[models.length - 1]) {
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
+    }
+
+    // All models failed
+    console.error('All scan attempts failed:', lastError);
+    document.getElementById('scanSpinner').classList.remove('active');
+    document.getElementById('scanActions').style.display = '';
+
+    const errorEl = document.getElementById('scanError');
+    let errorMsg = 'Fout bij herkennen: ' + lastError.message;
+
+    if (lastError.message && lastError.message.includes('API_KEY_INVALID')) {
+        errorMsg = 'Ongeldige API key. Controleer je Gemini key in de Sync tab.';
+    } else if (lastError.message && lastError.message.includes('API key not valid')) {
+        errorMsg = 'API key niet geldig. Ga naar de Sync tab en controleer of je key correct is gekopieerd.';
+    } else if (lastError.status === 429 || (lastError.message && lastError.message.includes('quota'))) {
+        errorMsg = 'API limiet bereikt. Je gratis Gemini quota is mogelijk op. Wacht een minuut en probeer opnieuw, of controleer je quota op aistudio.google.com.';
+    } else if (lastError.status === 403) {
+        errorMsg = 'Toegang geweigerd. Controleer of de Gemini API is ingeschakeld voor je Google project. Ga naar aistudio.google.com/apikey.';
+    } else if (lastError.message && lastError.message.includes('Failed to fetch')) {
+        errorMsg = 'Geen internetverbinding. Controleer je WiFi of mobiele data.';
+    }
+
+    errorEl.textContent = errorMsg;
+    errorEl.classList.add('active');
+}
+
+function saveScanResult() {
+    const name = document.getElementById('scanResultName').value.trim();
+    const servings = parseInt(document.getElementById('scanResultServings').value) || 4;
+    const time = document.getElementById('scanResultTime').value.trim() || '30 min';
+    const ingredientsText = document.getElementById('scanResultIngredients').value.trim();
+
+    if (!name) {
+        showToast('Vul een naam in voor het recept');
+        return;
+    }
+    if (!ingredientsText) {
+        showToast('Vul ingredi\u00ebnten in');
+        return;
+    }
+
+    const ingredients = ingredientsText.split('\n').map(l => l.trim()).filter(l => l);
+
+    const recipe = {
+        id: 'r_' + Date.now(),
+        name: name,
+        emoji: '\u{1F4F8}',
+        servings: servings,
+        time: time,
+        category: 'Eigen recepten',
+        ingredients: ingredients
+    };
+
+    recipes.unshift(recipe);
+    localStorage.setItem('lidl_recipes', JSON.stringify(recipes));
+    syncToFirebase();
+
+    closeScanModal();
+    renderRecipes();
+    renderCategoryFilter();
+    showToast('\u{1F4F8} ' + name + ' opgeslagen!');
+}
+
+function saveGeminiKey() {
+    const input = document.getElementById('geminiKeyInput');
+    const key = input.value.trim();
+    const statusEl = document.getElementById('geminiKeyStatus');
+
+    if (!key) {
+        statusEl.style.display = 'block';
+        statusEl.textContent = 'Voer een API key in';
+        statusEl.style.background = '#fee2e2';
+        statusEl.style.color = '#991b1b';
+        return;
+    }
+
+    localStorage.setItem('lidl_gemini_key', key);
+    statusEl.style.display = 'block';
+    statusEl.textContent = '\u2705 API key opgeslagen! Je kunt nu recepten van foto\'s importeren.';
+    statusEl.style.background = '#d1fae5';
+    statusEl.style.color = '#065f46';
+    showToast('Gemini API key opgeslagen');
+}
+
+function loadGeminiKeyUI() {
+    const key = localStorage.getItem('lidl_gemini_key');
+    if (key) {
+        const input = document.getElementById('geminiKeyInput');
+        if (input) {
+            input.value = key;
+        }
+        const statusEl = document.getElementById('geminiKeyStatus');
+        if (statusEl) {
+            statusEl.style.display = 'block';
+            statusEl.textContent = '\u2705 API key is ingesteld';
+            statusEl.style.background = '#d1fae5';
+            statusEl.style.color = '#065f46';
+        }
+    }
+}
+
+// ============ UTILS ============
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+// Init
+init();
+</script>
+
+</body>
+</html>
