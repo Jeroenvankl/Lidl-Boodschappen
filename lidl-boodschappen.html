@@ -7,6 +7,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Lidl Lijst">
     <meta name="theme-color" content="#0050aa">
+    <link rel="manifest" href="./manifest.json">
     <title>Lidl Boodschappenlijst</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -592,6 +593,25 @@
         .recipe-meta {
             font-size: 13px;
             color: var(--text-light);
+        }
+
+        .recipe-calories {
+            font-size: 14px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .calorie-dots {
+            font-size: 12px;
+            letter-spacing: 2px;
+        }
+
+        .calorie-dots-empty {
+            font-size: 12px;
+            letter-spacing: 2px;
+            color: #ddd;
         }
 
         .recipe-add-btn {
@@ -1375,6 +1395,110 @@
             font-size: 13px;
             margin-top: 8px;
         }
+
+        /* In-app notification banner */
+        .in-app-notification {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 500;
+            background: linear-gradient(135deg, #1a6dd1 0%, #0050aa 100%);
+            color: white;
+            padding: calc(12px + var(--safe-top)) 16px 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transform: translateY(-100%);
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 20px rgba(0,50,170,0.35);
+            cursor: pointer;
+        }
+
+        .in-app-notification.show {
+            transform: translateY(0);
+        }
+
+        .notification-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .notification-icon {
+            font-size: 22px;
+            flex-shrink: 0;
+        }
+
+        .notification-text {
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 1.4;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .notification-text strong {
+            font-weight: 700;
+        }
+
+        .notification-close {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .notification-close:active {
+            background: rgba(255,255,255,0.35);
+        }
+
+        /* Notification permission button */
+        .notif-btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            transition: opacity 0.15s;
+        }
+
+        .notif-btn.enabled {
+            background: var(--lidl-blue);
+            color: white;
+        }
+
+        .notif-btn.granted {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .notif-btn.denied {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .notif-status {
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-top: 8px;
+            line-height: 1.5;
+        }
     </style>
 </head>
 <body>
@@ -1563,7 +1687,29 @@
             </a>
             <div class="gemini-key-status" id="geminiKeyStatus" style="display:none;"></div>
         </div>
+
+        <div class="sync-card">
+            <h3>&#x1F514; Meldingen</h3>
+            <p>Ontvang een melding als iemand uit je huishouden iets aan de boodschappenlijst toevoegt.</p>
+            <button class="notif-btn enabled" id="notifBtn" onclick="requestNotificationPermission()">
+                &#x1F514; Meldingen inschakelen
+            </button>
+            <div class="notif-status" id="notifStatus" style="display:none;"></div>
+            <p style="font-size:12px; color:var(--text-light); margin-top:10px; margin-bottom:0; line-height:1.5;">
+                <strong>Tip:</strong> Voor meldingen op je lockscreen moet de app op je thuisscherm staan
+                (Safari &#x2192; Deel &#x2192; Zet op beginscherm). In-app meldingen werken altijd.
+            </p>
+        </div>
     </div>
+</div>
+
+<!-- In-app notification banner -->
+<div class="in-app-notification" id="inAppNotification" onclick="onNotificationTap()">
+    <div class="notification-content">
+        <span class="notification-icon">&#x1F514;</span>
+        <span class="notification-text" id="notificationText"></span>
+    </div>
+    <button class="notification-close" onclick="event.stopPropagation(); hideNotification()">&#x2715;</button>
 </div>
 
 <!-- Fridge Scan Modal -->
@@ -1761,6 +1907,7 @@ const DEFAULT_RECIPES = [
         servings: 4,
         time: '35 min',
         category: 'Italiaans',
+        calories: 620,
         ingredients: [
             '500g spaghetti', '400g rundergehakt', '2 uien', '3 teentjes knoflook',
             '2 blikken gepelde tomaten (400g)', '2 el tomatenpuree', '1 wortel',
@@ -1774,6 +1921,7 @@ const DEFAULT_RECIPES = [
         servings: 4,
         time: '40 min',
         category: 'Nederlands',
+        calories: 580,
         ingredients: [
             '1kg aardappelen (kruimig)', '500g boerenkool', '1 rookworst',
             '100ml melk', '50g boter', '1 ui', 'Zout en peper', 'Mosterd'
@@ -1786,6 +1934,7 @@ const DEFAULT_RECIPES = [
         servings: 4,
         time: '25 min',
         category: 'Grieks',
+        calories: 520,
         ingredients: [
             '500g kipfilet', '4 pitabroodjes', '1 komkommer', '200ml Griekse yoghurt',
             '1 teentje knoflook', '1 rode ui', '2 tomaten', 'IJsbergsla',
@@ -1799,6 +1948,7 @@ const DEFAULT_RECIPES = [
         servings: 4,
         time: '30 min',
         category: 'Aziatisch',
+        calories: 550,
         ingredients: [
             '400g rijst', '300g kipfilet', '2 eieren', '200g diepvries groenten mix',
             '3 el sojasaus', '2 el ketjap manis', '1 ui', '2 teentjes knoflook',
@@ -1812,6 +1962,7 @@ const DEFAULT_RECIPES = [
         servings: 4,
         time: '25 min',
         category: 'Soepen',
+        calories: 280,
         ingredients: [
             '2 blikken gepelde tomaten (400g)', '1 ui', '2 teentjes knoflook',
             '500ml groentebouillon', '100ml kookroom', '2 el tomatenpuree',
@@ -1825,6 +1976,7 @@ const DEFAULT_RECIPES = [
         servings: 4,
         time: '20 min',
         category: 'Mexicaans',
+        calories: 490,
         ingredients: [
             '4 tortilla wraps', '400g kipfilet', '2 avocado\'s', '1 limoen',
             '2 tomaten', '1 rode ui', 'IJsbergsla', 'Cr\u00e8me fra\u00eeche',
@@ -1838,6 +1990,7 @@ const DEFAULT_RECIPES = [
         servings: 4,
         time: '30 min',
         category: 'Nederlands',
+        calories: 420,
         ingredients: [
             '300g bloem', '3 eieren', '500ml melk', 'Snufje zout',
             'Boter (voor het bakken)', 'Poedersuiker', 'Stroop',
@@ -1851,6 +2004,7 @@ const DEFAULT_RECIPES = [
         servings: 4,
         time: '20 min',
         category: 'Salades',
+        calories: 450,
         ingredients: [
             '2 kroppen romaine sla', '300g kipfilet', '100g Parmezaanse kaas',
             '4 sneetjes brood (voor croutons)', '1 teentje knoflook',
@@ -1865,6 +2019,7 @@ const DEFAULT_RECIPES = [
         servings: 4,
         time: '45 min',
         category: 'Mexicaans',
+        calories: 560,
         ingredients: [
             '500g rundergehakt', '1 blik kidneybonen (400g)', '1 blik gepelde tomaten (400g)',
             '2 uien', '2 paprika\'s (rood)', '3 teentjes knoflook',
@@ -1879,6 +2034,7 @@ const DEFAULT_RECIPES = [
         servings: 4,
         time: '25 min',
         category: 'Italiaans',
+        calories: 580,
         ingredients: [
             '400g macaroni', '200g geraspte kaas', '500ml melk',
             '40g boter', '3 el bloem', 'Nootmuskaat', 'Zout en peper',
@@ -1897,6 +2053,9 @@ let acResults = [];
 let firebaseDB = null;
 let householdCode = localStorage.getItem('lidl_household') || null;
 let syncEnabled = false;
+let isLocalUpdate = false;
+let notificationTimeout = null;
+let listInitialized = false;
 
 // ============ INIT ============
 function init() {
@@ -1909,6 +2068,8 @@ function init() {
     updateItemCount();
     initFirebase();
     loadGeminiKeyUI();
+    registerServiceWorker();
+    updateNotifUI();
 
     // Close autocomplete on outside click
     document.addEventListener('click', (e) => {
@@ -2251,6 +2412,25 @@ function filterCategory(cat) {
     renderRecipes();
 }
 
+function getCalorieLevel(cal) {
+    if (!cal) return null;
+    if (cal < 200) return { level: 1, label: 'Zeer licht', color: '#27ae60' };
+    if (cal < 350) return { level: 2, label: 'Licht', color: '#2ecc71' };
+    if (cal < 450) return { level: 3, label: 'Matig', color: '#f1c40f' };
+    if (cal < 550) return { level: 4, label: 'Gemiddeld', color: '#f39c12' };
+    if (cal < 650) return { level: 5, label: 'Stevig', color: '#e67e22' };
+    if (cal < 800) return { level: 6, label: 'Zwaar', color: '#e74c3c' };
+    return { level: 7, label: 'Zeer zwaar', color: '#c0392b' };
+}
+
+function renderCalorieDots(calories) {
+    const info = getCalorieLevel(calories);
+    if (!info) return '';
+    const filled = '\u25CF'.repeat(info.level);
+    const empty = '\u25CB'.repeat(7 - info.level);
+    return `<span class="calorie-dots" style="color:${info.color}" title="${info.label}">${filled}</span><span class="calorie-dots-empty">${empty}</span>`;
+}
+
 function renderRecipes() {
     const container = document.getElementById('recipeList');
     const filtered = activeCategory === 'Alles'
@@ -2263,7 +2443,7 @@ function renderRecipes() {
                 <div class="recipe-emoji">${recipe.emoji}</div>
                 <div class="recipe-info">
                     <div class="recipe-name">${escapeHtml(recipe.name)}</div>
-                    <div class="recipe-meta">${recipe.servings} personen \u00B7 ${recipe.time}</div>
+                    <div class="recipe-meta">${recipe.servings} personen \u00B7 ${recipe.time}${recipe.calories ? ' \u00B7 ' + renderCalorieDots(recipe.calories) : ''}</div>
                 </div>
                 <button class="recipe-add-btn" onclick="event.stopPropagation(); addRecipeToList('${recipe.id}')">
                     + Lijst
@@ -2271,6 +2451,7 @@ function renderRecipes() {
             </div>
             <div class="recipe-details" id="details-${recipe.id}">
                 <h4>Ingredi\u00EBnten (${recipe.servings} personen)</h4>
+                ${recipe.calories ? `<div class="recipe-calories">${renderCalorieDots(recipe.calories)} ${getCalorieLevel(recipe.calories).label} maaltijd</div>` : ''}
                 <ul class="ingredient-list">
                     ${recipe.ingredients.map(ing => `<li>${escapeHtml(ing)}</li>`).join('')}
                 </ul>
@@ -2338,7 +2519,7 @@ function toggleRecipeForm() {
     }
 }
 
-function saveRecipe() {
+async function saveRecipe() {
     const name = document.getElementById('recipeName').value.trim();
     const emoji = document.getElementById('recipeEmoji').value.trim() || '\u{1F37D}\uFE0F';
     const servings = parseInt(document.getElementById('recipeServings').value) || 4;
@@ -2350,9 +2531,12 @@ function saveRecipe() {
 
     const ingredients = ingredientsText.split('\n').map(l => l.trim()).filter(l => l);
 
+    showToast('Calorie\u00EBn worden geschat door AI...');
+    const calories = await estimateCalories(ingredients, servings);
+
     const recipe = {
         id: 'r_' + Date.now(),
-        name, emoji, servings, time,
+        name, emoji, servings, time, calories,
         category: 'Eigen recepten',
         ingredients
     };
@@ -2483,10 +2667,22 @@ function connectToHousehold(code) {
         const data = snap.val();
         const newList = Array.isArray(data) ? data : Object.values(data || {});
         if (JSON.stringify(newList) !== JSON.stringify(shoppingList)) {
+            // Detect newly added items (for notifications)
+            const oldNames = new Set(shoppingList.map(i => (i.name || '').toLowerCase()));
+            const addedItems = newList.filter(i => i.name && !oldNames.has(i.name.toLowerCase()));
+
             shoppingList = newList;
             localStorage.setItem('lidl_list', JSON.stringify(shoppingList));
             renderShoppingList();
             updateItemCount();
+
+            // Show notification for items added by other devices
+            if (addedItems.length > 0 && !isLocalUpdate && listInitialized) {
+                showInAppNotification(addedItems);
+                showPushNotification(addedItems);
+            }
+            isLocalUpdate = false;
+            listInitialized = true;
         }
     });
 
@@ -2523,6 +2719,7 @@ function disconnectHousehold() {
 function syncToFirebase() {
     if (!firebaseDB || !householdCode || !syncEnabled) return;
 
+    isLocalUpdate = true; // Flag so we don't notify ourselves
     setSyncIndicator('syncing');
     const ref = firebaseDB.ref('households/' + householdCode);
     ref.update({
@@ -2533,6 +2730,7 @@ function syncToFirebase() {
         setSyncIndicator('connected');
     }).catch(() => {
         setSyncIndicator('error');
+        isLocalUpdate = false;
     });
 }
 
@@ -2590,6 +2788,143 @@ function copySyncCode() {
     }).catch(() => {
         showToast('Code: ' + householdCode);
     });
+}
+
+// ============ NOTIFICATIONS ============
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js').then(reg => {
+            console.log('Service Worker registered');
+        }).catch(err => {
+            console.log('Service Worker registration failed:', err);
+        });
+    }
+}
+
+function showInAppNotification(addedItems) {
+    if (!addedItems || addedItems.length === 0) return;
+
+    const notifEl = document.getElementById('inAppNotification');
+    const textEl = document.getElementById('notificationText');
+
+    const names = addedItems.slice(0, 5).map(i => i.name);
+    let text = '';
+    if (addedItems.length === 1) {
+        text = '<strong>' + escapeHtml(names[0]) + '</strong> is toegevoegd aan de lijst';
+    } else {
+        const more = addedItems.length > 5 ? ' en nog ' + (addedItems.length - 5) + ' meer' : '';
+        text = '<strong>' + addedItems.length + ' producten</strong> toegevoegd: ' + names.map(n => escapeHtml(n)).join(', ') + more;
+    }
+
+    textEl.innerHTML = text;
+    notifEl.classList.add('show');
+
+    // Clear existing timeout
+    if (notificationTimeout) clearTimeout(notificationTimeout);
+    notificationTimeout = setTimeout(() => {
+        hideNotification();
+    }, 6000);
+}
+
+function hideNotification() {
+    document.getElementById('inAppNotification').classList.remove('show');
+    if (notificationTimeout) {
+        clearTimeout(notificationTimeout);
+        notificationTimeout = null;
+    }
+}
+
+function onNotificationTap() {
+    hideNotification();
+    // Switch to shopping list tab
+    if (activeTab !== 'list') {
+        document.querySelector('.tab').click();
+    }
+}
+
+function showPushNotification(addedItems) {
+    // Only show push notification when app is not visible (background/closed)
+    if (document.visibilityState === 'visible') return;
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+
+    const names = addedItems.slice(0, 5).map(i => i.name);
+    const body = names.join(', ') + (addedItems.length > 5 ? ' +' + (addedItems.length - 5) + ' meer' : '');
+
+    // Try to use Service Worker for notification (works in background)
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+            type: 'SHOW_NOTIFICATION',
+            title: '\u{1F6D2} Boodschappenlijst bijgewerkt',
+            body: body
+        });
+    } else {
+        // Fallback: direct Notification API
+        try {
+            new Notification('\u{1F6D2} Boodschappenlijst bijgewerkt', {
+                body: body,
+                tag: 'lidl-list-update'
+            });
+        } catch(e) {}
+    }
+}
+
+async function requestNotificationPermission() {
+    if (!('Notification' in window)) {
+        showToast('Meldingen worden niet ondersteund in deze browser');
+        updateNotifUI();
+        return;
+    }
+
+    try {
+        const permission = await Notification.requestPermission();
+        updateNotifUI();
+        if (permission === 'granted') {
+            showToast('\u{2705} Meldingen ingeschakeld!');
+        } else if (permission === 'denied') {
+            showToast('Meldingen geblokkeerd. Wijzig dit in je iPhone instellingen.');
+        }
+    } catch(e) {
+        showToast('Kan meldingen niet activeren: ' + e.message);
+    }
+}
+
+function updateNotifUI() {
+    const btn = document.getElementById('notifBtn');
+    const status = document.getElementById('notifStatus');
+    if (!btn) return;
+
+    if (!('Notification' in window)) {
+        btn.textContent = 'Niet beschikbaar';
+        btn.className = 'notif-btn denied';
+        btn.disabled = true;
+        status.style.display = 'block';
+        status.textContent = 'Push meldingen zijn niet beschikbaar in deze browser. Installeer de app op je thuisscherm voor meldingen.';
+        status.style.background = '#fef3c7';
+        status.style.color = '#92400e';
+        return;
+    }
+
+    const perm = Notification.permission;
+    if (perm === 'granted') {
+        btn.innerHTML = '\u{2705} Meldingen zijn ingeschakeld';
+        btn.className = 'notif-btn granted';
+        status.style.display = 'block';
+        status.textContent = 'Je ontvangt meldingen wanneer iemand producten toevoegt.';
+        status.style.background = '#d1fae5';
+        status.style.color = '#065f46';
+    } else if (perm === 'denied') {
+        btn.innerHTML = '\u{1F6AB} Meldingen geblokkeerd';
+        btn.className = 'notif-btn denied';
+        status.style.display = 'block';
+        status.textContent = 'Ga naar Instellingen \u2192 Safari \u2192 Meldingen om dit te wijzigen.';
+        status.style.background = '#fee2e2';
+        status.style.color = '#991b1b';
+    } else {
+        btn.innerHTML = '\u{1F514} Meldingen inschakelen';
+        btn.className = 'notif-btn enabled';
+        status.style.display = 'none';
+    }
 }
 
 // ============ COPY & SHARE LIST ============
@@ -2864,6 +3199,7 @@ function pickEmoji(el) {
 // ============ SCAN RECIPE (Gemini Vision) ============
 let scanImageBase64 = null;
 let scanImageType = null;
+let scanResultCaloriesValue = null;
 
 function openScanModal() {
     const key = localStorage.getItem('lidl_gemini_key');
@@ -2883,6 +3219,7 @@ function closeScanModal() {
 function resetScan() {
     scanImageBase64 = null;
     scanImageType = null;
+    scanResultCaloriesValue = null;
     const preview = document.getElementById('scanPreview');
     const uploadArea = document.getElementById('scanUploadArea');
     const uploadIcon = document.getElementById('scanUploadIcon');
@@ -2997,6 +3334,50 @@ async function callGeminiAPI(key, model, prompt, imageBase64, imageType) {
     return await response.json();
 }
 
+async function callGeminiTextAPI(key, model, prompt) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 256 }
+        })
+    });
+
+    if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        const errMsg = errData?.error?.message || `HTTP ${response.status}`;
+        const err = new Error(errMsg);
+        err.status = response.status;
+        throw err;
+    }
+
+    return await response.json();
+}
+
+async function estimateCalories(ingredients, servings) {
+    const key = localStorage.getItem('lidl_gemini_key');
+    if (!key) return null;
+
+    const prompt = `Schat het aantal kilocalorie\u00ebn per portie voor dit recept (${servings} personen).
+
+Ingredi\u00ebnten:
+${ingredients.join('\n')}
+
+Geef ALLEEN een getal terug (de geschatte kcal per portie), geen tekst. Bijvoorbeeld: 520`;
+
+    try {
+        const data = await callGeminiTextAPI(key, 'gemini-2.5-flash', prompt);
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        const calories = parseInt(text);
+        return isNaN(calories) ? null : calories;
+    } catch (e) {
+        console.warn('Calorie schatting mislukt:', e.message);
+        return null;
+    }
+}
+
 async function scanRecipe() {
     const key = localStorage.getItem('lidl_gemini_key');
     if (!key) {
@@ -3021,6 +3402,7 @@ Extraheer het recept en geef het resultaat als JSON in dit exacte formaat:
   "name": "receptnaam in het Nederlands",
   "servings": 4,
   "time": "30 min",
+  "calories": 500,
   "ingredients": ["hoeveelheid + ingredi\u00ebnt 1", "hoeveelheid + ingredi\u00ebnt 2"]
 }
 
@@ -3029,6 +3411,7 @@ Regels:
 - Gebruik gangbare hoeveelheden met eenheid (bijv. "500g kipfilet", "2 uien", "1 blik gepelde tomaten 400g", "3 el olijfolie")
 - Als het aantal personen niet duidelijk is, gebruik 4
 - Als de bereidingstijd niet duidelijk is, schat deze
+- Schat het aantal kilocalorie\u00ebn per portie op basis van de ingredi\u00ebnten en hoeveelheden
 - Geef ALLEEN het JSON object terug, geen andere tekst of markdown
 - Als je geen recept kunt herkennen, geef dan: {"error": "Kon geen recept herkennen in deze foto"}`;
 
@@ -3069,6 +3452,7 @@ Regels:
             document.getElementById('scanResultName').value = recipe.name || '';
             document.getElementById('scanResultServings').value = recipe.servings || 4;
             document.getElementById('scanResultTime').value = recipe.time || '30 min';
+            scanResultCaloriesValue = recipe.calories || null;
             document.getElementById('scanResultIngredients').value = (recipe.ingredients || []).join('\n');
 
             // Show result, hide spinner
@@ -3118,6 +3502,7 @@ function saveScanResult() {
     const name = document.getElementById('scanResultName').value.trim();
     const servings = parseInt(document.getElementById('scanResultServings').value) || 4;
     const time = document.getElementById('scanResultTime').value.trim() || '30 min';
+    const calories = scanResultCaloriesValue;
     const ingredientsText = document.getElementById('scanResultIngredients').value.trim();
 
     if (!name) {
@@ -3137,6 +3522,7 @@ function saveScanResult() {
         emoji: '\u{1F4F8}',
         servings: servings,
         time: time,
+        calories: calories,
         category: 'Eigen recepten',
         ingredients: ingredients
     };
@@ -3209,3 +3595,4 @@ init();
 
 </body>
 </html>
+
